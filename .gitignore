@@ -1,0 +1,8 @@
+virtualenv
+*.idea
+*.db
+**/__pycache__
+**/*.pt
+*.swp
+.DS_Store
+*.pem
