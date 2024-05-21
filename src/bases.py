@@ -8,14 +8,16 @@ from utils import mae, get_device, c64
 device = get_device()
 
 class GroupBasis(Basis, nn.Module):
-    def __init__(self, input_dim, transformer, num_mats, lr=5e-4):
+    def __init__(self, input_dim, transformer, num_basis, num_cosets, lr=5e-4):
         super().__init__()
       
         self.input_dim = input_dim
         self.transformer = transformer
 
-        self.continuous = nn.Parameter(torch.empty((num_mats, input_dim, input_dim)).to(device))
-        self.discrete = nn.Parameter(torch.empty((num_mats, input_dim, input_dim)).to(device))
+        # lie elements
+        self.continuous = nn.Parameter(torch.empty((num_basis, input_dim, input_dim)).to(device))
+        # normal matrices
+        self.discrete = nn.Parameter(torch.empty((num_cosets, input_dim, input_dim)).to(device))
 
         for tensor in [
             self.discrete,
@@ -38,10 +40,24 @@ class GroupBasis(Basis, nn.Module):
         return perm
 
     def similarity_loss(self, x):
-        return self.loss(x, x[self.derangement()])
+        return torch.sum(x * x[self.derangement(len(x))])
 
-    def epsilon(self):
-        return 0.1
+
+    # From LieGan
+    def normalize_factor(self):
+        trace = torch.einsum('kdf,kdf->k', self.continuous, self.continuous)
+        factor = torch.sqrt(trace / self.continuous.shape[1])
+        return factor.unsqueeze(-1).unsqueeze(-1)
+
+    def normalized_continuous(self):
+        return self.continuous / (self.normalize_factor() + 1e-6)
+
+    def sample_coefficients(self, bs):
+        num_key_points = self.transformer.num_key_points()
+        return torch.normal(0, 1, (bs, num_key_points, self.continuous.shape[0])).to(device)
+
+    def loss(self, ytrue, ypred):
+        return torch.sqrt(torch.mean(torch.square(ytrue - ypred))) 
 
     def apply(self, x):
         # x assumed to have batch
@@ -57,19 +73,20 @@ class GroupBasis(Basis, nn.Module):
         r1 += self.similarity_loss(nn.functional.normalize(self.continuous, dim=-2))
 
         # we also push for a diverse range of determinants 
-        r1 += self.similarity_loss(torch.det(self.discrete))
-        r1 += self.similarity_loss(torch.det(self.continuous))
+        # r1 += self.similarity_loss(torch.det(self.discrete))
+        # r1 += self.similarity_loss(torch.det(self.continuous))
 
-        num_key_points = self.transformer.num_key_points()
         identity = torch.eye(self.input_dimension()).to(device)
 
-        mixing_factor = torch.random.rand((bs, num_key_points, self.continuous.shape[0])).to(device)
-        mixing_factor /= torch.sum(mixing_factor, dim=-1) # now a probability distribution
-        continuous = self.epsilon() * (self.continuous * mixing_factor.unsqueeze(-1).unsqueeze(-1) - identity)
-        discrete = self.discrete[torch.random.randint(self.discrete.shape[0], (bs, )).to(device)]
-        key_points = discrete * continuous
 
-        xp = self.transformer.apply(key_points, x)
+        coeffs = self.sample_coefficients(bs)
+        continuous = torch.sum(self.normalized_continuous() * coeffs.unsqueeze(-1).unsqueeze(-1), dim=-3)
+
+        discrete = self.discrete[torch.randint(self.discrete.shape[0], (bs, )).to(device)].unsqueeze(-3)
+
+        # xp = self.transformer.apply(discrete, x)
+        xp = self.transformer.apply(discrete, continuous, x)
+        # xp = self.transformer.apply(key_points, x)
 
         return xp, r1 * IDENTITY_COLLAPSE_REGULARIZATION 
 

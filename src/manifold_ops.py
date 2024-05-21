@@ -5,27 +5,6 @@ from utils import *
 
 device = get_device()
 
-# Manifold Feature Field
-class ManifoldFF(ABC, nn.Module):
-    # [batch, *manifold_size, feature_dimensions]
-    def __init__(self, data):
-        super().__init__()
-        self.data = data
-
-    @abstractmethod
-    def feature_dimension(self):
-        return self.data[-1]
-
-class SphereUVFF(ManifoldFF):
-    pass
-
-class R3FF(ManifoldFF):
-    def __init__(self, data):
-        super().__init__(data)
-   
-    def field_shape(self):
-        return self.data.shape[-4:-1]
-
 # Feature Field Transformer
 # Given the group action elements, actually apply a local transformation to
 # the target manifold feature fiedl
@@ -37,19 +16,24 @@ class FFTransformer(ABC):
         self.blend_factors = blend_factors
 
     def num_key_points(self):
-        self.blend_factors.shape[-1]
+        return self.blend_factors.shape[-1]
 
-    @abstractmethod
-    def create_new_field(self, data);
-        pass
+    # cosets should be regular elements
+    # group_key_points should be in the tangent space of the identity
+    def apply(self, cosets, group_key_points, feature_field):
+        # add manifold size dimension
+        manifold_size = self.blend_factors.shape[:-1]
+        for i in range(len(manifold_size)):
+            # before two matrix dimensions and the num_key_points dimension
+            group_key_points = group_key_points.unsqueeze(-4)
+            cosets = cosets.unsqueeze(-3)
 
-    def apply(self, group_key_points, feature_field):
         # shape: [(batch), *manifold_size, num_key_points, ff_dimension, ff_dimension]
         mult = group_key_points * self.blend_factors.unsqueeze(-1).unsqueeze(-1)
         # shape: [(batch), *manifold_size, ff_dimension, ff_dimension]
-        matrices = torch.sum(mult, dim=-3)
+        matrices = torch.matrix_exp(torch.sum(mult, dim=-3))
 
-        return self.create_new_field(matrices * feature_field.data)
+        return (cosets @ matrices @ feature_field.unsqueeze(-1)).squeeze(-1)
 
 # applies via barycentric interpolation
 class SphereUVFFTransformer(FFTransformer):
@@ -116,6 +100,3 @@ class R3FFTransformer(FFTransformer):
         """
 
         super().__init__(r3_blending_matrix(ff_shape, subdivisions));
-
-    def create_new_field(self, data):
-        return R3FF(data)

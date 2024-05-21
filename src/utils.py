@@ -8,7 +8,7 @@ c64 = torch.complex64
 def mae(xx, yy):
     return torch.mean(torch.abs(xx - yy))
 
-def get_device(no_mps=False):
+def get_device(no_mps=True):
     if no_mps:
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
     return torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
