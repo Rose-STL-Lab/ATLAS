@@ -13,7 +13,7 @@ class Predictor(ABC):
         pass
 
     def loss(self, y_pred, y_true):
-        return mae(y_pred, y)
+        return mae(y_pred, y_true)
 
     # some predictors can be given as fixed functions
     def needs_training(self):

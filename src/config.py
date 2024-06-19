@@ -7,5 +7,6 @@ INVARIANCE_LOSS_COEFF = 3
 # regularization that discovered group is not just the identity
 IDENTITY_COLLAPSE_REGULARIZATION = 5e-1
 
-
+# boolean for CUDA (currently CUDA not working)
+DISABLE_CUDA = True
 
