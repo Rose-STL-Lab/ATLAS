@@ -49,7 +49,7 @@ class SphereUVFFTransformer(FFTransformer):
 def r3_blending_matrix(ff_shape, subdivisions):
     num_segments = 2 ** subdivisions
     key_points = (num_segments + 1) ** 3
-    ret = torch.empty((*ff_shape, key_points))
+    ret = torch.empty((*ff_shape, key_points)).to(device)
 
     # bitindices of vertices of tetrahedrons that form a cube
     tetrahedron_offsets = np.array([
