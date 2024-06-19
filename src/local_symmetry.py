@@ -5,17 +5,6 @@ from abc import ABC, abstractmethod
 from utils import mae
 import config
 
-class Basis(ABC):
-    optimizer = None
-
-    # returns (g*x, regularization)
-    @abstractmethod
-    def apply(self, x, y):
-        pass 
-
-    def loss(self, x, y):
-        return mae(x, y)
-
 class Predictor(ABC):
     optimizer = None
 
@@ -23,18 +12,21 @@ class Predictor(ABC):
     def run(self, x):
         pass
 
-    def loss(self, x, y):
-        return mae(x, y)
+    def loss(self, y_pred, y_true):
+        return mae(y_pred, y)
 
     # some predictors can be given as fixed functions
     def needs_training(self):
         return True
 
-    def __call__(self, x):
-        return self.run(x)
-
 class LocalTrainer:
     def __init__(self, predictor, basis):
+        """
+            predictor: local_symmetry.py/Predictor
+                This corresponds to xi in the propoasl
+            basis: lie_basis.py/GroupBasis
+                Basis for the discovered symmetry group (somewhat corresponding to G in the proposal)
+        """
         self.predictor = predictor
         self.basis = basis
        
@@ -60,7 +52,7 @@ class LocalTrainer:
             b_losses = []
             for xx, yy in xxyy:
                 xp, regularization = self.basis.apply(xx)
-                model_prediction = self.predictor(xp)
+                model_prediction = self.predictor.run(xp)
 
                 b_loss = self.basis.loss(model_prediction, yy) * config.INVARIANCE_LOSS_COEFF
                 # don't include regularization in outputs
@@ -73,9 +65,7 @@ class LocalTrainer:
                 self.basis.optimizer.step()
             b_losses = np.mean(b_losses) if len(b_losses) else 0
         
-            print("Model Prediction", model_prediction, "YY", yy)
-
-            print("Discrete", self.basis.discrete.data, "Dets", torch.det(self.basis.discrete.data))
-            print("Continuous", torch.matrix_exp(self.basis.normalized_continuous().data))
+            print("Discrete GL(n)", self.basis.discrete.data) 
+            print("Continuous GL(n)", torch.matrix_exp(self.basis.normalized_continuous().data))
             print("Epoch", e, "Predictor loss", p_losses, "Basis loss", b_losses)
 

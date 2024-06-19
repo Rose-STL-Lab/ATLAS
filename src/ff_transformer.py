@@ -1,26 +1,29 @@
 import torch.nn as nn
 import sys
-from abc import ABC, abstractmethod
 from utils import *
+from config import ONLY_IDENTITY_COMPONENT
 
 device = get_device()
 
 # Feature Field Transformer
 # Given the group action elements, actually apply a local transformation to
-# the target manifold feature fiedl
-class FFTransformer(ABC):
+# the target manifold feature field
+class FFTransformer:
     def __init__(self, blend_factors):
         """
-            blend_factors: tensor that is of shape [manifold_size, num_sample_points] denoting the contribution of each basis element at each manifold point
+            blend_factors: tensor that is of shape [*manifold_shape, num_sample_points] denoting the contribution of each key point to each manifold point
         """
         self.blend_factors = blend_factors
 
     def num_key_points(self):
         return self.blend_factors.shape[-1]
 
-    # cosets should be regular elements
-    # group_key_points should be in the tangent space of the identity
     def apply(self, cosets, group_key_points, feature_field):
+        """
+            cosets: tensor of shape [(batch), ff_dimension, ff_dimension]
+            group_key_points: elements of the lie algebra of shape [(batch), num_key_points, ff_dim, ff_dim]
+            feature_field: the actual input value tensor of shape [(batch), *manifold_shape, *ff_shape]
+        """
         # add manifold size dimension
         manifold_size = self.blend_factors.shape[:-1]
         for i in range(len(manifold_size)):
@@ -33,7 +36,10 @@ class FFTransformer(ABC):
         # shape: [(batch), *manifold_size, ff_dimension, ff_dimension]
         matrices = torch.matrix_exp(torch.sum(mult, dim=-3))
 
-        return (cosets @ matrices @ feature_field.unsqueeze(-1)).squeeze(-1)
+        if ONLY_IDENTITY_COMPONENT:
+            return (matrices @ feature_field.unsqueeze(-1)).squeeze(-1)
+        else:
+            return (cosets @ matrices @ feature_field.unsqueeze(-1)).squeeze(-1)
 
 # applies via barycentric interpolation
 class SphereUVFFTransformer(FFTransformer):
@@ -89,7 +95,7 @@ def r3_blending_matrix(ff_shape, subdivisions):
                 ret[x][y][z] = blend
     return ret
 
-# barycentric interpolation in 4d
+# barycentric interpolation in 3d
 class R3FFTransformer(FFTransformer):
     def __init__(self, ff_shape, subdivisions):
         """

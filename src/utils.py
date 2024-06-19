@@ -2,7 +2,6 @@ import torch
 import numpy as np
 from config import *
 
-
 c64 = torch.complex64
 
 def mae(xx, yy):
