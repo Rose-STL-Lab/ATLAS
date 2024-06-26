@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from utils import mae
 import config
 
+
 class Predictor(ABC):
     optimizer = None
 
@@ -18,6 +19,7 @@ class Predictor(ABC):
     # some predictors can be given as fixed functions
     def needs_training(self):
         return True
+
 
 class LocalTrainer:
     def __init__(self, predictor, basis):
@@ -66,6 +68,6 @@ class LocalTrainer:
             b_losses = np.mean(b_losses) if len(b_losses) else 0
         
             print("Discrete GL(n)", self.basis.discrete.data) 
-            print("Continuous GL(n)", torch.matrix_exp(self.basis.normalized_continuous().data))
+            print("Continuous Det", torch.matrix_exp(self.basis.normalized_continuous().data))
             print("Epoch", e, "Predictor loss", p_losses, "Basis loss", b_losses)
 

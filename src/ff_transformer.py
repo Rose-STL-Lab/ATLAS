@@ -1,9 +1,11 @@
+import torch
 import torch.nn as nn
 import sys
 from utils import *
 from config import ONLY_IDENTITY_COMPONENT
 
 device = get_device()
+
 
 # Feature Field Transformer
 # Given the group action elements, actually apply a local transformation to
@@ -36,14 +38,71 @@ class FFTransformer:
         # shape: [(batch), *manifold_size, ff_dimension, ff_dimension]
         matrices = torch.matrix_exp(torch.sum(mult, dim=-3))
 
+        print("Min Det", torch.min(torch.det(matrices)))
         if ONLY_IDENTITY_COMPONENT:
             return (matrices @ feature_field.unsqueeze(-1)).squeeze(-1)
         else:
             return (cosets @ matrices @ feature_field.unsqueeze(-1)).squeeze(-1)
 
-# applies via barycentric interpolation
-class SphereUVFFTransformer(FFTransformer):
-    pass 
+    # ff transformer can also just be used to create smooth functions in general
+    # this method is useful in the case of generating smooth vector field for winding number problem
+    # value at kp: [bs (exactly one dimension), num_key_points, *shape]
+    # ret [bs, *manifold_shape, *shape]
+    def smooth_function(self, value_at_key_points):
+        blend_factors = self.blend_factors.unsqueeze(0)
+        for i in range(len(value_at_key_points.shape) - 2):
+            blend_factors = blend_factors.unsqueeze(-1)
+
+        manifold_size = self.blend_factors.shape[:-1]
+        for i in range(len(manifold_size)):
+            value_at_key_points = value_at_key_points.unsqueeze(1)
+
+        # shape: [bs, *manifold_size, num_key_points, *shape]
+        mult = value_at_key_points * blend_factors
+        # shape: [bs, *manifold_size, *shape]
+        mult = torch.sum(mult, dim=len(manifold_size) + 1)
+        return mult
+
+
+# blending matrix is done via bilinear interpolation
+class SphereFFTransformer(FFTransformer):
+    pass
+#    def __init__(self, u_dim, v_dim, u_keypoints, v_keypoints):
+#        num_kp = u_keypoints * v_keypoints
+#        blend = torch.empty((u_dim, v_dim, num_kp)).to(device)
+#
+#        for u in range(u_keypoints):
+#            u_index = 1 + u * u_dim // u_keypoints
+#            # avoid poles 
+#            
+#            for v in range(v_keypoints):
+#                
+#
+#        super().__init__(blend)
+
+
+class TorusFFTransformer(FFTransformer):
+    def __init__(self, u_dim, v_dim, u_keypoints, v_keypoints):
+        num_kp = u_keypoints * v_keypoints
+        blend = torch.zeros((u_dim, v_dim, num_kp)).to(device)
+
+        for u in range(u_dim):
+            for v in range(v_dim):
+                # bi linear interpolate off of four closest points
+                u0 = u * u_keypoints // u_dim
+                u1 = (u0 + 1) % u_keypoints
+                v0 = v * v_keypoints // v_dim
+                v1 = (v0 + 1) % v_keypoints
+
+                s = (u - (u0 * u_dim / u_keypoints)) / ((u1 * u_dim / u_keypoints) - (u0 * u_dim / u_keypoints))
+                t = (v - (v0 * v_dim / v_keypoints)) / ((v1 * v_dim / v_keypoints) - (v0 * v_dim / v_keypoints))
+
+                blend[u, v, u0 * v_keypoints + v0] = s * t
+                blend[u, v, u1 * v_keypoints + v0] = (1 - s) * t
+                blend[u, v, u0 * v_keypoints + v1] = s * (1 - t)
+                blend[u, v, u1 * v_keypoints + v1] = (1 - s) * (1 - t)
+
+        super().__init__(blend)
 
 
 def r3_blending_matrix(ff_shape, subdivisions):
@@ -95,8 +154,9 @@ def r3_blending_matrix(ff_shape, subdivisions):
                 ret[x][y][z] = blend
     return ret
 
+
 # barycentric interpolation in 3d
-class R3FFTransformer(FFTransformer):
+class R3BarycentricFFTransformer(FFTransformer):
     def __init__(self, ff_shape, subdivisions):
         """
             ff_shape: shape of the feature field's underlying data (x, y, z)

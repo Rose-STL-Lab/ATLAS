@@ -6,6 +6,7 @@ from config import *
 from utils import mae, get_device, c64
 device = get_device()
 
+
 class GroupBasis(nn.Module):
     def __init__(self, input_dim, transformer, num_basis, num_cosets, lr=5e-4):
         super().__init__()
@@ -41,17 +42,18 @@ class GroupBasis(nn.Module):
                 perm[[i, j]] = perm[[j, i]]
 
             return perm
-        return torch.sum(x * x[derangement(len(x))])
 
+        xp = x[derangement(len(x))]
+        return torch.sum(x * xp) / (torch.sum(x * x) + torch.sum(xp * xp))
 
-    # From LieGan
+    # From LieGan (currently unused)
     def normalize_factor(self):
         trace = torch.einsum('kdf,kdf->k', self.continuous, self.continuous)
         factor = torch.sqrt(trace / self.continuous.shape[1])
         return factor.unsqueeze(-1).unsqueeze(-1)
 
     def normalized_continuous(self):
-        return self.continuous / (self.normalize_factor() + 1e-6)
+        return self.continuous
 
     def sample_coefficients(self, bs):
         num_key_points = self.transformer.num_key_points()
@@ -68,10 +70,9 @@ class GroupBasis(nn.Module):
         bs = x.shape[0]
 
         # regularization: 
-        # aim for as 'distinct' as possible basis matrices 
-        r1 = 0
-        r1 += self.similarity_loss(nn.functional.normalize(self.discrete, dim=-2))
-        r1 += self.similarity_loss(nn.functional.normalize(self.continuous, dim=-2))
+        # aim for as 'orthogonal' as possible basis matrices
+        r1 = (self.similarity_loss(self.discrete) +
+              self.similarity_loss(self.continuous))
 
         # `continuous` is still in the tangent space, the feature field is responsible for doing the matrix
         # exp call
@@ -88,5 +89,5 @@ class GroupBasis(nn.Module):
 
     # called by LocalTrainer during training
     def loss(self, ypred, ytrue):
-        return torch.sqrt(torch.mean(torch.square(ytrue - ypred))) 
+        return torch.sqrt(torch.mean(torch.square(ytrue - ypred)) + 1e-6) 
 
