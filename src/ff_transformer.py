@@ -38,7 +38,7 @@ class FFTransformer:
         # shape: [(batch), *manifold_size, ff_dimension, ff_dimension]
         matrices = torch.matrix_exp(torch.sum(mult, dim=-3))
 
-        print("Min Det", torch.min(torch.det(matrices)))
+        #print("Min Det", torch.min(torch.det(matrices)))
         if ONLY_IDENTITY_COMPONENT:
             return (matrices @ feature_field.unsqueeze(-1)).squeeze(-1)
         else:
