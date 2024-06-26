@@ -44,7 +44,7 @@ class GroupBasis(nn.Module):
             return perm
 
         xp = x[derangement(len(x))]
-        return torch.sum(x * xp) / (torch.sum(x * x) + torch.sum(xp * xp))
+        return torch.abs(torch.sum(x * xp)) / torch.sqrt(torch.sum(x * x + xp * xp))
 
     # From LieGan (currently unused)
     def normalize_factor(self):
@@ -63,18 +63,11 @@ class GroupBasis(nn.Module):
         """
             x is a batched tensor with dimension [bs, *manifold_dims, *input_dims]
             For instance, if the manifold is 2d and each vector on the feature field is 3d
-            x would look like [bs, manifold_x, manifold_y, vector_x, vector_y, vector_z]
+            x would look like [bs, manifold_x, manifold_y, vector_index]
         """
-
-        # x assumed to have batch
         bs = x.shape[0]
 
-        # regularization: 
-        # aim for as 'orthogonal' as possible basis matrices
-        r1 = (self.similarity_loss(self.discrete) +
-              self.similarity_loss(self.continuous))
-
-        # `continuous` is still in the tangent space, the feature field is responsible for doing the matrix
+        # `continuous` is still in the lie algebra, the feature field is responsible for doing the matrix
         # exp call
         coeffs = self.sample_coefficients(bs)
         continuous = torch.sum(self.normalized_continuous() * coeffs.unsqueeze(-1).unsqueeze(-1), dim=-3)
@@ -83,11 +76,16 @@ class GroupBasis(nn.Module):
         discrete = self.discrete[torch.randint(self.discrete.shape[0], (bs, )).to(device)].unsqueeze(-3)
 
         # conceptually, this is g * x. The feature field object defines how exactly to apply g
-        xp = self.transformer.apply(discrete, continuous, x)
-
-        return xp, r1 * IDENTITY_COLLAPSE_REGULARIZATION 
+        return self.transformer.apply(discrete, continuous, x)
 
     # called by LocalTrainer during training
     def loss(self, ypred, ytrue):
-        return torch.sqrt(torch.mean(torch.square(ytrue - ypred)) + 1e-6) 
+        return torch.sqrt(torch.mean(torch.square(ytrue - ypred)) + 1e-6)
 
+    def regularization(self):
+        # regularization:
+        # aim for as 'orthogonal' as possible basis matrices
+        r1 = (self.similarity_loss(self.discrete) +
+              self.similarity_loss(self.continuous))
+
+        return r1 * IDENTITY_COLLAPSE_REGULARIZATION

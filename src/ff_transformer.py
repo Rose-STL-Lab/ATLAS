@@ -38,7 +38,6 @@ class FFTransformer:
         # shape: [(batch), *manifold_size, ff_dimension, ff_dimension]
         matrices = torch.matrix_exp(torch.sum(mult, dim=-3))
 
-        print("Min Det", torch.min(torch.det(matrices)))
         if ONLY_IDENTITY_COMPONENT:
             return (matrices @ feature_field.unsqueeze(-1)).squeeze(-1)
         else:
@@ -83,6 +82,9 @@ class SphereFFTransformer(FFTransformer):
 
 class TorusFFTransformer(FFTransformer):
     def __init__(self, u_dim, v_dim, u_keypoints, v_keypoints):
+        assert u_dim % u_keypoints == 0
+        assert v_dim % v_keypoints == 0
+
         num_kp = u_keypoints * v_keypoints
         blend = torch.zeros((u_dim, v_dim, num_kp)).to(device)
 
@@ -94,13 +96,13 @@ class TorusFFTransformer(FFTransformer):
                 v0 = v * v_keypoints // v_dim
                 v1 = (v0 + 1) % v_keypoints
 
-                s = (u - (u0 * u_dim / u_keypoints)) / ((u1 * u_dim / u_keypoints) - (u0 * u_dim / u_keypoints))
-                t = (v - (v0 * v_dim / v_keypoints)) / ((v1 * v_dim / v_keypoints) - (v0 * v_dim / v_keypoints))
+                s = (u - (u0 * u_dim // u_keypoints)) / (u_dim // u_keypoints)
+                t = (v - (v0 * v_dim // v_keypoints)) / (v_dim // v_keypoints)
 
-                blend[u, v, u0 * v_keypoints + v0] = s * t
-                blend[u, v, u1 * v_keypoints + v0] = (1 - s) * t
-                blend[u, v, u0 * v_keypoints + v1] = s * (1 - t)
-                blend[u, v, u1 * v_keypoints + v1] = (1 - s) * (1 - t)
+                blend[u, v, u0 * v_keypoints + v0] = (1 - s) * (1 - t)
+                blend[u, v, u1 * v_keypoints + v0] = s * (1 - t)
+                blend[u, v, u0 * v_keypoints + v1] = (1 - s) * t
+                blend[u, v, u1 * v_keypoints + v1] = s * t
 
         super().__init__(blend)
 

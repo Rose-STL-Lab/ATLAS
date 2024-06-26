@@ -53,14 +53,14 @@ class LocalTrainer:
             # train basis
             b_losses = []
             for xx, yy in xxyy:
-                xp, regularization = self.basis.apply(xx)
+                xp = self.basis.apply(xx)
                 model_prediction = self.predictor.run(xp)
 
                 b_loss = self.basis.loss(model_prediction, yy) * config.INVARIANCE_LOSS_COEFF
                 # don't include regularization in outputs
                 b_losses.append(b_loss.detach().numpy())
 
-                b_loss += regularization
+                b_loss += self.basis.regularization()
 
                 self.basis.optimizer.zero_grad()
                 b_loss.backward()
@@ -68,6 +68,6 @@ class LocalTrainer:
             b_losses = np.mean(b_losses) if len(b_losses) else 0
         
             print("Discrete GL(n)", self.basis.discrete.data) 
-            print("Continuous Det", torch.matrix_exp(self.basis.normalized_continuous().data))
+            print("Continuous GL(n)", torch.matrix_exp(self.basis.normalized_continuous().data))
             print("Epoch", e, "Predictor loss", p_losses, "Basis loss", b_losses)
 
