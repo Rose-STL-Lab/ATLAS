@@ -126,7 +126,7 @@ if __name__ == '__main__':
     basis.predictor = predictor
 
     dataset = WindingDataset(N, predictor)
-    loader = torch.utils.data.DataLoader(dataset, batch_size=bs, shuffle=True, num_workers=2)
+    loader = torch.utils.data.DataLoader(dataset, batch_size=bs, shuffle=True)
 
     gdn = LocalTrainer(predictor, basis)
     gdn.train(loader, epochs)

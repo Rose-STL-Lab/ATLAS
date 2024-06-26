@@ -43,7 +43,7 @@ class LocalTrainer:
                 for xx, yy in xxyy:
                     y_pred = self.predictor(xx)
                     p_loss = self.predictor.loss(y_pred, yy)
-                    p_losses.append(p_loss.detach().numpy())
+                    p_losses.append(p_loss.detach().cpu().numpy())
                     
                     self.predictor.optimizer.zero_grad()
                     p_loss.backward()
@@ -58,7 +58,7 @@ class LocalTrainer:
 
                 b_loss = self.basis.loss(model_prediction, yy) * config.INVARIANCE_LOSS_COEFF
                 # don't include regularization in outputs
-                b_losses.append(b_loss.detach().numpy())
+                b_losses.append(b_loss.detach().cpu().numpy())
 
                 b_loss += self.basis.regularization()
 
