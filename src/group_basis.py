@@ -79,7 +79,7 @@ class GroupBasis(nn.Module):
 
         if not config.ONLY_IDENTITY_COMPONENT:
             # train either discrete or continuous in one round
-            if np.random.random() > 1:
+            if np.random.random() > 0.5:
                 discrete = None
             else:
                 continuous = None

@@ -1,3 +1,6 @@
+# TODO, data generation is bad since 99% case of 0 winding number
+# Necessarily, the vector field must contain zero or the winding number is boring
+# on the other hand, this makes precision errors more rampant
 import itertools
 import math
 
@@ -9,9 +12,9 @@ from local_symmetry import Predictor, LocalTrainer
 from group_basis import GroupBasis
 from ff_transformer import TorusFFTransformer
 
-U_SAMPLES = 30
+U_SAMPLES = 45
 U_KSAMPLES = 5
-V_SAMPLES = 30
+V_SAMPLES = 45
 V_KSAMPLES = 5
 NUM_LOOPS = 5
 
@@ -77,6 +80,8 @@ class WindingPredictor(Predictor):
                 delta_theta[delta_theta < -math.pi] += 2 * math.pi
                 ret[..., i] += delta_theta
 
+                # print("Max Angle: ", torch.max(delta_theta))
+
         return ret
 
     def needs_training(self):
@@ -84,24 +89,16 @@ class WindingPredictor(Predictor):
 
 
 class WindingDataset(torch.utils.data.Dataset):
-    def __init__(self, N, predictor, gen_upoints=10, gen_vpoints=10):
+    def __init__(self, N, predictor, gen_upoints=3, gen_vpoints=3):
         self.N = N
         self.predictor = predictor
 
         smooth_function_gen = TorusFFTransformer(U_SAMPLES, V_SAMPLES, gen_upoints, gen_vpoints)
-        key_points = torch.empty((N, gen_upoints * gen_vpoints, 2)).to(device)
-        key_points[:, :, 0] = 1 + torch.abs(torch.normal(0, 1, (N, gen_upoints * gen_vpoints))).to(device)
-        key_points[:, :, 1] = 2 * math.pi * torch.rand((N, gen_upoints * gen_vpoints)).to(device)
-        # interpolate the magnitude and angle
-        lerped = smooth_function_gen.smooth_function(key_points)
-        self.tensor = torch.stack(
-            [torch.cos(lerped[..., 1]), # * lerped[..., 0],
-             torch.sin(lerped[..., 1])], # * lerped[..., 0]],
-            dim=3
-        )
+        key_points = torch.normal(0, 1, (N, gen_upoints * gen_vpoints, 2)).to(device)
+        self.tensor = smooth_function_gen.smooth_function(key_points)
 
         self.out_tensor = self.predictor.run(self.tensor)
-        print("Max Winding", torch.max(self.out_tensor))
+        print(torch.abs(torch.mean(self.out_tensor)))
 
     def __len__(self):
         return self.N

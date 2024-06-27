@@ -59,7 +59,6 @@ class LocalTrainer:
                 b_loss = self.basis.loss(model_prediction, yy) * config.INVARIANCE_LOSS_COEFF
                 # don't include regularization in outputs
                 b_losses.append(float(b_loss.detach().cpu()))
-                print("Loss", float(b_loss.detach().cpu()), " Det ", torch.det(self.basis.discrete))
 
                 b_loss += self.basis.regularization()
 
