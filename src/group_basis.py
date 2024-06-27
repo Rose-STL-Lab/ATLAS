@@ -24,7 +24,7 @@ class GroupBasis(nn.Module):
             self.discrete,
             self.continuous,
         ]:
-            nn.init.normal_(tensor, 0, 1e-1)
+            nn.init.normal_(tensor, 0, 1)
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
 
@@ -47,7 +47,7 @@ class GroupBasis(nn.Module):
         xp = x[derangement(len(x))]
         return torch.abs(torch.sum(x * xp)) / torch.sqrt(torch.sum(x * x + xp * xp))
 
-    # From LieGan (currently unused)
+    # From LieGan
     def normalize_factor(self):
         trace = torch.einsum('kdf,kdf->k', self.continuous, self.continuous)
         factor = torch.sqrt(trace / self.continuous.shape[1])
@@ -58,7 +58,8 @@ class GroupBasis(nn.Module):
 
     def sample_coefficients(self, bs):
         num_key_points = self.transformer.num_key_points()
-        return torch.normal(0, 1, (bs, num_key_points, self.continuous.shape[0])).to(device)
+        unnormalized = torch.abs(torch.normal(0, 1, (bs, num_key_points, self.continuous.shape[0])).to(device))
+        return unnormalized / torch.sum(unnormalized, dim=1, keepdim=True)
 
     def apply(self, x):
         """
@@ -76,15 +77,12 @@ class GroupBasis(nn.Module):
         # conceptually, selecting which component of the lie group to use for each member of the batch
         discrete = self.discrete[torch.randint(self.discrete.shape[0], (bs, )).to(device)]
 
-        identity = torch.eye(self.input_dim).to(device)
-
         if not config.ONLY_IDENTITY_COMPONENT:
             # train either discrete or continuous in one round
-            if np.random.random() > 0.5:
-                discrete[:] = identity.unsqueeze(0)
+            if np.random.random() > 1:
+                discrete = None
             else:
-                continuous[:] = identity.unsqueeze(0).unsqueeze(0)
-                pass
+                continuous = None
 
         # conceptually, this is g * x. The feature field object defines how exactly to apply g
         return self.transformer.apply(discrete, continuous, x)

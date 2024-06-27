@@ -9,31 +9,28 @@ from local_symmetry import Predictor, LocalTrainer
 from group_basis import GroupBasis
 from ff_transformer import TorusFFTransformer
 
-U_SAMPLES = 45
+U_SAMPLES = 30
 U_KSAMPLES = 5
-V_SAMPLES = 45
+V_SAMPLES = 30
 V_KSAMPLES = 5
+NUM_LOOPS = 5
 
 assert U_SAMPLES % U_KSAMPLES == 0
 assert V_SAMPLES % V_KSAMPLES == 0
 
 device = get_device()
 
-NUM_LOOPS = 1
 
-
-torch.manual_seed(0)
-random.seed(0)
 class WindingPredictor(Predictor):
     def __init__(self):
         self.paths = []
 
         for i in range(NUM_LOOPS):
-            u_bias = U_SAMPLES * torch.poisson(torch.scalar_tensor(0.5))
-            v_bias = V_SAMPLES * torch.poisson(torch.scalar_tensor(0.5))
-            num_down = int(torch.poisson(torch.scalar_tensor(U_SAMPLES / 2)))
+            u_bias = U_SAMPLES * torch.poisson(torch.scalar_tensor(1))
+            v_bias = V_SAMPLES * torch.poisson(torch.scalar_tensor(1))
+            num_down = int(torch.poisson(torch.scalar_tensor(U_SAMPLES)))
             num_up = int(num_down + u_bias)
-            num_left = int(torch.poisson(torch.scalar_tensor(V_SAMPLES / 2)))
+            num_left = int(torch.poisson(torch.scalar_tensor(V_SAMPLES)))
             num_right = int(num_left + v_bias)
 
             path_str = []
@@ -80,9 +77,6 @@ class WindingPredictor(Predictor):
                 delta_theta[delta_theta < -math.pi] += 2 * math.pi
                 ret[..., i] += delta_theta
 
-                # should be smooth
-                assert torch.max(torch.abs(delta_theta)) < 2
-
         return ret
 
     def needs_training(self):
@@ -90,7 +84,7 @@ class WindingPredictor(Predictor):
 
 
 class WindingDataset(torch.utils.data.Dataset):
-    def __init__(self, N, predictor, gen_upoints=3, gen_vpoints=3):
+    def __init__(self, N, predictor, gen_upoints=10, gen_vpoints=10):
         self.N = N
         self.predictor = predictor
 
@@ -101,12 +95,13 @@ class WindingDataset(torch.utils.data.Dataset):
         # interpolate the magnitude and angle
         lerped = smooth_function_gen.smooth_function(key_points)
         self.tensor = torch.stack(
-            [torch.cos(lerped[..., 1]) * lerped[..., 0],
-             torch.sin(lerped[..., 1]) * lerped[..., 0]],
+            [torch.cos(lerped[..., 1]), # * lerped[..., 0],
+             torch.sin(lerped[..., 1])], # * lerped[..., 0]],
             dim=3
         )
 
         self.out_tensor = self.predictor.run(self.tensor)
+        print("Max Winding", torch.max(self.out_tensor))
 
     def __len__(self):
         return self.N

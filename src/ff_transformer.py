@@ -22,29 +22,44 @@ class FFTransformer:
 
     def apply(self, cosets, group_key_points, feature_field):
         """
-            cosets: tensor of shape [(batch), ff_dimension, ff_dimension]
-            group_key_points: elements of the lie algebra of shape [(batch), num_key_points, ff_dim, ff_dim]
+            cosets: None or tensor of shape [(batch), ff_dimension, ff_dimension]
+            group_key_points: None or elements of the lie algebra of shape [(batch), num_key_points, ff_dim, ff_dim]
             feature_field: the actual input value tensor of shape [(batch), *manifold_shape, *ff_shape]
         """
+        assert cosets is not None or group_key_points is not None
+
         # mimic num_key_points
-        cosets = cosets.unsqueeze(-3)
+        if cosets is not None:
+            cosets = cosets.unsqueeze(-3)
 
         # add manifold size dimension
         manifold_size = self.blend_factors.shape[:-1]
         for i in range(len(manifold_size)):
             # before two matrix dimensions and the num_key_points dimension
-            group_key_points = group_key_points.unsqueeze(-4)
-            cosets = cosets.unsqueeze(-3)
+            if group_key_points is not None:
+                group_key_points = group_key_points.unsqueeze(-4)
+            if cosets is not None:
+                cosets = cosets.unsqueeze(-3)
 
-        # shape: [(batch), *manifold_size, num_key_points, ff_dimension, ff_dimension]
-        mult = group_key_points * self.blend_factors.unsqueeze(-1).unsqueeze(-1)
-        # shape: [(batch), *manifold_size, ff_dimension, ff_dimension]
-        matrices = torch.matrix_exp(torch.sum(mult, dim=-3))
+        if group_key_points is not None:
+            # shape: [(batch), *manifold_size, num_key_points, ff_dimension, ff_dimension]
+            mult = group_key_points * self.blend_factors.unsqueeze(-1).unsqueeze(-1)
+            # shape: [(batch), *manifold_size, ff_dimension, ff_dimension]
+            matrices = torch.matrix_exp(torch.sum(mult, dim=-3))
+        else:
+            matrices = None
 
         if ONLY_IDENTITY_COMPONENT:
             return (matrices @ feature_field.unsqueeze(-1)).squeeze(-1)
         else:
-            return (cosets @ matrices @ feature_field.unsqueeze(-1)).squeeze(-1)
+            if matrices is None:
+                build = cosets
+            elif cosets is None:
+                build = matrices
+            else:
+                build = cosets @ matrices
+
+            return (build @ feature_field.unsqueeze(-1)).squeeze(-1)
 
     # ff transformer can also just be used to create smooth functions in general
     # this method is useful in the case of generating smooth vector field for winding number problem
