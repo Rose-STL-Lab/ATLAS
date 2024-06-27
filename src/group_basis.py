@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 
+import config
 from config import *
 from utils import mae, get_device, c64
 device = get_device()
@@ -23,7 +24,7 @@ class GroupBasis(nn.Module):
             self.discrete,
             self.continuous,
         ]:
-            nn.init.normal_(tensor, 0, 2e-2)
+            nn.init.normal_(tensor, 0, 1e-1)
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
 
@@ -53,7 +54,7 @@ class GroupBasis(nn.Module):
         return factor.unsqueeze(-1).unsqueeze(-1)
 
     def normalized_continuous(self):
-        return self.continuous
+        return self.continuous / self.normalize_factor()
 
     def sample_coefficients(self, bs):
         num_key_points = self.transformer.num_key_points()
@@ -73,7 +74,17 @@ class GroupBasis(nn.Module):
         continuous = torch.sum(self.normalized_continuous() * coeffs.unsqueeze(-1).unsqueeze(-1), dim=-3)
 
         # conceptually, selecting which component of the lie group to use for each member of the batch
-        discrete = self.discrete[torch.randint(self.discrete.shape[0], (bs, )).to(device)].unsqueeze(-3)
+        discrete = self.discrete[torch.randint(self.discrete.shape[0], (bs, )).to(device)]
+
+        identity = torch.eye(self.input_dim).to(device)
+
+        if not config.ONLY_IDENTITY_COMPONENT:
+            # train either discrete or continuous in one round
+            if np.random.random() > 0.5:
+                discrete[:] = identity.unsqueeze(0)
+            else:
+                continuous[:] = identity.unsqueeze(0).unsqueeze(0)
+                pass
 
         # conceptually, this is g * x. The feature field object defines how exactly to apply g
         return self.transformer.apply(discrete, continuous, x)

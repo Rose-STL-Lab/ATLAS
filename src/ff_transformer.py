@@ -26,6 +26,9 @@ class FFTransformer:
             group_key_points: elements of the lie algebra of shape [(batch), num_key_points, ff_dim, ff_dim]
             feature_field: the actual input value tensor of shape [(batch), *manifold_shape, *ff_shape]
         """
+        # mimic num_key_points
+        cosets = cosets.unsqueeze(-3)
+
         # add manifold size dimension
         manifold_size = self.blend_factors.shape[:-1]
         for i in range(len(manifold_size)):
