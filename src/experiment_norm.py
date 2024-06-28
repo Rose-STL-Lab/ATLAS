@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from utils import get_device
-from local_symmetry import Predictor, LocalTrainer  
+from local_symmetry import Predictor, LocalTrainer
 from group_basis import GroupBasis
 from ff_transformer import R3BarycentricFFTransformer
 

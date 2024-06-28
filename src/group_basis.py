@@ -3,28 +3,27 @@ import torch.nn as nn
 import numpy as np
 
 import config
-from config import *
-from utils import mae, get_device, c64
+from utils import get_device
 device = get_device()
 
 
 class GroupBasis(nn.Module):
-    def __init__(self, input_dim, transformer, num_basis, num_cosets, lr=5e-4):
+    def __init__(self, input_dim, transformer, num_basis, num_cosets, lr=5e-4, dtype=torch.float32):
         super().__init__()
       
         self.input_dim = input_dim
         self.transformer = transformer
 
         # lie elements
-        self.continuous = nn.Parameter(torch.empty((num_basis, input_dim, input_dim)).to(device))
+        self.continuous = nn.Parameter(torch.empty((num_basis, input_dim, input_dim), dtype=dtype).to(device))
         # normal matrices
-        self.discrete = nn.Parameter(torch.empty((num_cosets, input_dim, input_dim)).to(device))
+        self.discrete = nn.Parameter(torch.empty((num_cosets, input_dim, input_dim), dtype=dtype).to(device))
 
         for tensor in [
             self.discrete,
             self.continuous,
         ]:
-            nn.init.normal_(tensor, 0, 1)
+            nn.init.normal_(tensor, 0, 0.02)
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
 
@@ -45,11 +44,11 @@ class GroupBasis(nn.Module):
             return perm
 
         xp = x[derangement(len(x))]
-        return torch.abs(torch.sum(x * xp)) / torch.sqrt(torch.sum(x * x + xp * xp))
+        return torch.real(torch.abs(torch.sum(x * xp)) / torch.abs(torch.sum(x * x)))
 
     # From LieGan
     def normalize_factor(self):
-        trace = torch.einsum('kdf,kdf->k', self.continuous, self.continuous)
+        trace = torch.abs(torch.einsum('kdf,kdf->k', self.continuous, self.continuous))
         factor = torch.sqrt(trace / self.continuous.shape[1])
         return factor.unsqueeze(-1).unsqueeze(-1)
 
@@ -97,4 +96,4 @@ class GroupBasis(nn.Module):
         r1 = (self.similarity_loss(self.discrete) +
               self.similarity_loss(self.continuous))
 
-        return r1 * IDENTITY_COLLAPSE_REGULARIZATION
+        return r1 * config.IDENTITY_COLLAPSE_REGULARIZATION

@@ -16,7 +16,7 @@ U_SAMPLES = 45
 U_KSAMPLES = 5
 V_SAMPLES = 45
 V_KSAMPLES = 5
-NUM_LOOPS = 5
+NUM_LOOPS = 1
 
 assert U_SAMPLES % U_KSAMPLES == 0
 assert V_SAMPLES % V_KSAMPLES == 0
@@ -96,9 +96,10 @@ class WindingDataset(torch.utils.data.Dataset):
         smooth_function_gen = TorusFFTransformer(U_SAMPLES, V_SAMPLES, gen_upoints, gen_vpoints)
         key_points = torch.normal(0, 1, (N, gen_upoints * gen_vpoints, 2)).to(device)
         self.tensor = smooth_function_gen.smooth_function(key_points)
+        # clip out singularity (and rest of unit circle)
+        self.tensor = self.tensor / torch.min(torch.tensor(1), torch.linalg.vector_norm(self.tensor, dim=-1, keepdim=True))
 
         self.out_tensor = self.predictor.run(self.tensor)
-        print(torch.abs(torch.mean(self.out_tensor)))
 
     def __len__(self):
         return self.N
