@@ -44,7 +44,7 @@ class GroupBasis(nn.Module):
             return perm
 
         xp = x[derangement(len(x))]
-        return torch.real(torch.abs(torch.sum(x * xp)) / torch.abs(torch.sum(x * x)))
+        return torch.real(torch.sum(torch.abs(x * xp)) / torch.sum(x * torch.conj(x)))
 
     # From LieGan
     def normalize_factor(self):
@@ -99,6 +99,6 @@ class GroupBasis(nn.Module):
         # regularization:
         # aim for as 'orthogonal' as possible basis matrices
         r1 = (self.similarity_loss(self.discrete) +
-              self.similarity_loss(self.continuous))
+              self.similarity_loss(self.normalized_continuous()))
 
         return r1 * config.IDENTITY_COLLAPSE_REGULARIZATION

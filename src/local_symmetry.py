@@ -34,6 +34,7 @@ class LocalTrainer:
        
         if config.DEBUG:
             torch.autograd.set_detect_anomaly(True)
+            torch.set_printoptions(precision=5, sci_mode=False)
 
     def train(self, xxyy, epochs):
         for e in range(epochs):
@@ -52,22 +53,24 @@ class LocalTrainer:
                 
             # train basis
             b_losses = []
+            b_reg = []
             for xx, yy in xxyy:
                 xp = self.basis.apply(xx)
                 model_prediction = self.predictor.run(xp)
 
                 b_loss = self.basis.loss(model_prediction, yy) * config.INVARIANCE_LOSS_COEFF
-                # don't include regularization in outputs
                 b_losses.append(float(b_loss.detach().cpu()))
 
                 b_loss += self.basis.regularization()
+                b_reg.append(float(b_loss.detach().cpu()))
 
                 self.basis.optimizer.zero_grad()
                 b_loss.backward()
                 self.basis.optimizer.step()
             b_losses = np.mean(b_losses) if len(b_losses) else 0
+            b_reg = np.mean(b_reg ) if len(b_reg ) else 0
         
-            print("Discrete GL(n)", self.basis.discrete.data) 
-            print("Continuous GL(n)", self.basis.normalized_continuous().data)
-            print("Epoch", e, "Predictor loss", p_losses, "Basis loss", b_losses)
+            print("Discrete GL(n) \n", self.basis.discrete.data) 
+            print("Continuous GL(n) \n", self.basis.normalized_continuous().data)
+            print("Epoch", e, "Predictor loss", p_losses, "Basis loss", b_losses, "Basis reg", b_reg)
 

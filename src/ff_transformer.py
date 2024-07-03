@@ -80,7 +80,6 @@ class FFTransformer:
         mult = torch.sum(mult, dim=len(manifold_size) + 1)
         return mult
 
-
 class TorusFFTransformer(FFTransformer):
     def __init__(self, u_dim, v_dim, u_keypoints, v_keypoints):
         assert u_dim % u_keypoints == 0

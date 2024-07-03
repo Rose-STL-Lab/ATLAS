@@ -7,7 +7,7 @@ from ff_transformer import TorusFFTransformer
 
 # torus size along each dimension (i.e. 3 -> (3, 3, 3))
 MAN_DIM = 10
-VECTOR_DIM = 2
+VECTOR_DIM = 3
 
 device = get_device()
 
