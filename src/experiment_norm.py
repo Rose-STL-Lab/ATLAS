@@ -3,10 +3,10 @@ import torch.nn as nn
 from utils import get_device
 from local_symmetry import Predictor, LocalTrainer
 from group_basis import GroupBasis
-from ff_transformer import R3BarycentricFFTransformer
+from ff_transformer import TorusFFTransformer
 
-# manifold size along each dimension (i.e. 3 -> (3, 3, 3))
-MAN_DIM = 4
+# torus size along each dimension (i.e. 3 -> (3, 3, 3))
+MAN_DIM = 10
 VECTOR_DIM = 2
 
 device = get_device()
@@ -23,7 +23,7 @@ class NormPredictor(Predictor):
 class NormDataset(torch.utils.data.Dataset):
     def __init__(self, N): 
         self.N = N
-        self.tensor = torch.normal(0, 1, (N, MAN_DIM, MAN_DIM, MAN_DIM, VECTOR_DIM)).to(device)
+        self.tensor = torch.normal(0, 1, (N, MAN_DIM, MAN_DIM, VECTOR_DIM)).to(device)
 
     def __len__(self):
         return self.N
@@ -38,8 +38,10 @@ if __name__ == '__main__':
     bs = 64
 
     predictor = NormPredictor()
-    transformer = R3BarycentricFFTransformer((MAN_DIM, MAN_DIM, MAN_DIM), 0)
-    basis = GroupBasis(VECTOR_DIM, transformer, 5, 3)
+    
+    # the sub division rate doesn't really matter as we don't require smoothness anyway
+    transformer = TorusFFTransformer(MAN_DIM, MAN_DIM, 5, 5)
+    basis = GroupBasis(VECTOR_DIM, transformer, 3, 3)
 
     dataset = NormDataset(N)
     loader = torch.utils.data.DataLoader(dataset, batch_size=bs, shuffle=True)

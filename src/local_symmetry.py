@@ -68,6 +68,6 @@ class LocalTrainer:
             b_losses = np.mean(b_losses) if len(b_losses) else 0
         
             print("Discrete GL(n)", self.basis.discrete.data) 
-            print("Continuous GL(n)", torch.matrix_exp(self.basis.normalized_continuous().data))
+            print("Continuous GL(n)", self.basis.normalized_continuous().data)
             print("Epoch", e, "Predictor loss", p_losses, "Basis loss", b_losses)
 

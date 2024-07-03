@@ -56,6 +56,11 @@ class GroupBasis(nn.Module):
         return self.continuous / self.normalize_factor()
 
     def sample_coefficients(self, bs):
+        """
+            Important, even when we are dealing with complex values,
+            our goal is still only to find the real Lie groups so that the sampled coefficients are
+            to be taken only as real numbers.
+        """
         num_key_points = self.transformer.num_key_points()
         unnormalized = torch.abs(torch.normal(0, 1, (bs, num_key_points, self.continuous.shape[0])).to(device))
         return unnormalized / torch.sum(unnormalized, dim=1, keepdim=True)

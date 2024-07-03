@@ -1,6 +1,8 @@
 # TODO, data generation is bad since 99% case of 0 winding number
 # Necessarily, the vector field must contain zero or the winding number is boring
 # on the other hand, this makes precision errors more rampant
+# This experiment in general is not very interesting since the entire search space
+# is the invariant space (in terms of the Lie Algebra)
 import itertools
 import math
 
@@ -80,7 +82,7 @@ class WindingPredictor(Predictor):
                 delta_theta[delta_theta < -math.pi] += 2 * math.pi
                 ret[..., i] += delta_theta
 
-                # print("Max Angle: ", torch.max(delta_theta))
+                # print("Max Delta", torch.max(torch.abs(delta_theta)))
 
         return ret
 
@@ -94,12 +96,20 @@ class WindingDataset(torch.utils.data.Dataset):
         self.predictor = predictor
 
         smooth_function_gen = TorusFFTransformer(U_SAMPLES, V_SAMPLES, gen_upoints, gen_vpoints)
-        key_points = torch.normal(0, 1, (N, gen_upoints * gen_vpoints, 2)).to(device)
-        self.tensor = smooth_function_gen.smooth_function(key_points)
-        # clip out singularity (and rest of unit circle)
-        self.tensor = self.tensor / torch.min(torch.tensor(1), torch.linalg.vector_norm(self.tensor, dim=-1, keepdim=True))
+
+        mag = 1 + torch.abs(torch.normal(0, 1, (N, gen_upoints * gen_vpoints)).to(device))
+        phase = torch.normal(0, 2 * math.pi, (N, gen_upoints * gen_vpoints)).to(device)
+        key_points = torch.stack((mag, phase), dim=2)
+        polar = smooth_function_gen.smooth_function(key_points)
+
+        self.tensor = torch.stack([
+            polar[:, :, :, 0] * torch.cos(polar[:, :, :, 1]),
+            polar[:, :, :, 0] * torch.sin(polar[:, :, :, 1])
+        ], dim=3)
 
         self.out_tensor = self.predictor.run(self.tensor)
+
+        print("Max Winding", torch.mean(torch.abs(self.out_tensor)))
 
     def __len__(self):
         return self.N

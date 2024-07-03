@@ -81,23 +81,6 @@ class FFTransformer:
         return mult
 
 
-# blending matrix is done via bilinear interpolation
-class SphereFFTransformer(FFTransformer):
-    pass
-#    def __init__(self, u_dim, v_dim, u_keypoints, v_keypoints):
-#        num_kp = u_keypoints * v_keypoints
-#        blend = torch.empty((u_dim, v_dim, num_kp)).to(device)
-#
-#        for u in range(u_keypoints):
-#            u_index = 1 + u * u_dim // u_keypoints
-#            # avoid poles 
-#            
-#            for v in range(v_keypoints):
-#                
-#
-#        super().__init__(blend)
-
-
 class TorusFFTransformer(FFTransformer):
     def __init__(self, u_dim, v_dim, u_keypoints, v_keypoints):
         assert u_dim % u_keypoints == 0
