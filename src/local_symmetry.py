@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import torch.nn as nn
 from abc import ABC, abstractmethod
 
 from utils import mae
@@ -58,10 +59,20 @@ class LocalTrainer:
                 xp = self.basis.apply(xx)
                 model_prediction = self.predictor.run(xp)
 
-                b_loss = self.basis.loss(model_prediction, yy) * config.INVARIANCE_LOSS_COEFF
+                if config.EXPERIMENT_TYPE == "toptagging":
+                    criterion = nn.CrossEntropyLoss(reduction='mean')
+                    b_loss = criterion(model_prediction, yy)
+                else:
+                    b_loss = self.basis.loss(model_prediction, yy) * config.INVARIANCE_LOSS_COEFF
+                    
+                # don't include regularization in outputs
                 b_losses.append(float(b_loss.detach().cpu()))
 
-                b_loss += self.basis.regularization()
+                if config.EXPERIMENT_TYPE == "toptagging":
+                    b_loss += torch.abs(nn.CosineSimilarity(dim=2)(xp, xx).mean())
+                else:
+                    b_loss += self.basis.regularization()
+                
                 b_reg.append(float(b_loss.detach().cpu()))
 
                 self.basis.optimizer.zero_grad()

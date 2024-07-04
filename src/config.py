@@ -9,6 +9,10 @@ INVARIANCE_LOSS_COEFF = 3
 # regularization that discovered group is not just the identity
 IDENTITY_COLLAPSE_REGULARIZATION = 0.1
 
+# Type of Test
+EXPERIMENT_TYPE = "toptagging"
+# EXPERIMENT_TYPE = "norm"
+
 # boolean for CUDA
 DISABLE_CUDA = False
 
