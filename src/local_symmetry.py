@@ -70,7 +70,6 @@ class LocalTrainer:
             b_losses = np.mean(b_losses) if len(b_losses) else 0
             b_reg = np.mean(b_reg ) if len(b_reg ) else 0
         
-            print("Discrete GL(n) \n", self.basis.discrete.data) 
-            print("Continuous GL(n) \n", self.basis.normalized_continuous().data)
+            print("Discovered Basis \n", self.basis.summary())
             print("Epoch", e, "Predictor loss", p_losses, "Basis loss", b_losses, "Basis reg", b_reg)
 

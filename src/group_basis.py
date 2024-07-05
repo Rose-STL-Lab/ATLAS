@@ -6,29 +6,36 @@ import config
 from utils import get_device
 device = get_device()
 
+class FFConfig:
+    # kind = 'lie' or 'jacobian' 
+    # if kind = 'jacobian', then lambda_dim is required
+    # vs_dim = vector space dimension of the feature field
+    def __init__(self, kind, vs_dim, manifold_dim=None, lambda_dim=None):
+        if kind == 'jacobian':
+            assert lambda_dim is not None
+        else:
+            assert lambda_dim is None
 
-class GroupBasis(nn.Module):
-    def __init__(self, input_dim, transformer, num_basis, num_cosets, lr=5e-4, dtype=torch.float32):
+        self.kind = kind
+        self.vs_dim = vs_dim
+        self.lambda_dim = lambda_dim
+        self.manifold_dim = manifold_dim
+
+class FeatureFieldBasis(nn.Module):
+    def __init__(self, ff_config, num_basis, dtype):
         super().__init__()
-      
-        self.input_dim = input_dim
-        self.transformer = transformer
+        self.config = ff_config
+        self.dtype = dtype
 
-        # lie elements
-        self.continuous = nn.Parameter(torch.empty((num_basis, input_dim, input_dim), dtype=dtype).to(device))
-        # normal matrices
-        self.discrete = nn.Parameter(torch.empty((num_cosets, input_dim, input_dim), dtype=dtype).to(device))
+        if ff_config.kind == 'lie':
+            self.tensor = nn.Parameter(torch.empty((num_basis, ff_config.vs_dim, ff_config.vs_dim), dtype=dtype).to(device))
+            nn.init.normal_(self.tensor, 0, 0.02)
+        else:
+            self.tensor = nn.Parameter(torch.empty((num_basis, ff_config.lambda_dim), dtype=dtype).to(device))
+            self.b = nn.Parameter(torch.empty((ff_config.vs_dim, ff_config.lambda_dim * ff_config.manifold_dim)).to(device))
 
-        for tensor in [
-            self.discrete,
-            self.continuous,
-        ]:
-            nn.init.normal_(tensor, 0, 0.02)
-
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
-
-    def input_dimension(self):
-        return self.input_dim
+            nn.init.normal_(self.tensor, 0, 0.02)
+            nn.init.normal_(self.b, 0, 0.02)
 
     def similarity_loss(self, x):
         def derangement(n):
@@ -44,16 +51,47 @@ class GroupBasis(nn.Module):
             return perm
 
         xp = x[derangement(len(x))]
-        return torch.real(torch.sum(torch.abs(x * xp)) / torch.sum(x * torch.conj(x)))
+        denom = torch.sum(torch.real(x * torch.conj(x)))
+        if self.dtype == torch.complex64:
+            return torch.sum(
+                torch.abs(torch.real(x) * torch.real(xp)) + 
+                torch.abs(torch.imag(x) * torch.imag(xp))
+            ) / denom
+        else:
+            return torch.sum(torch.abs(x * xp)) / denom
+
+    def reg(self):
+        if self.config.kind == 'lie':
+            return self.similarity_loss(self.tensor)
+        else:
+            return self.similarity_loss(self.tensor) -  \
+                torch.sum(torch.minimum(torch.tensor(1).to(device), torch.abs(self.b)))
+
+class GroupBasis(nn.Module):
+    def __init__(self, input_ffs, transformer, num_basis, lr=5e-4, dtype=torch.float32):
+        super().__init__()
+      
+        self.transformer = transformer
+        self.num_basis = num_basis
+        self.dtype = dtype
+
+        self.inputs = nn.ModuleList([FeatureFieldBasis(ff, num_basis, dtype) for ff in input_ffs])
+
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
+    
+    def summary(self):
+        return [self.normalize_basis(inp.tensor).data if inp.config.kind == 'lie' else inp.b.data for inp in self.inputs] 
 
     # From LieGan
-    def normalize_factor(self):
-        trace = torch.abs(torch.einsum('kdf,kdf->k', self.continuous, self.continuous))
-        factor = torch.sqrt(trace / self.continuous.shape[1])
-        return factor.unsqueeze(-1).unsqueeze(-1)
-
-    def normalized_continuous(self):
-        return self.continuous / self.normalize_factor()
+    def normalize_basis(self, tensor):
+        if len(tensor.shape) == 3:
+            trace = torch.abs(torch.einsum('kdf,kdf->k', tensor, tensor))
+            factor = torch.sqrt(trace / tensor.shape[1]) + 1e-6
+            return tensor / factor.unsqueeze(-1).unsqueeze(-1)
+        else:
+            trace = torch.abs(torch.einsum('kd,kd->k', tensor, tensor))
+            factor = torch.sqrt(trace / tensor.shape[1]) + 1e-6
+            return tensor / factor.unsqueeze(-1)
 
     def sample_coefficients(self, bs):
         """
@@ -62,34 +100,35 @@ class GroupBasis(nn.Module):
             to be taken only as real numbers.
         """
         num_key_points = self.transformer.num_key_points()
-        unnormalized = torch.abs(torch.normal(0, 1, (bs, num_key_points, self.continuous.shape[0])).to(device))
-        return unnormalized / torch.sum(unnormalized, dim=1, keepdim=True)
+        unnormalized = torch.abs(torch.normal(0, 1, (bs, num_key_points, self.num_basis)).to(device))
+        return unnormalized / torch.sum(unnormalized / num_key_points, dim=1, keepdim=True)
 
     def apply(self, x):
         """
-            x is a batched tensor with dimension [bs, *manifold_dims, *input_dims]
+            x is a batched tensor with dimension [bs, *manifold_dims, \sum input_dims]
             For instance, if the manifold is 2d and each vector on the feature field is 3d
             x would look like [bs, manifold_x, manifold_y, vector_index]
         """
         bs = x.shape[0]
 
-        # `continuous` is still in the lie algebra, the feature field is responsible for doing the matrix
-        # exp call
         coeffs = self.sample_coefficients(bs)
-        continuous = torch.sum(self.normalized_continuous() * coeffs.unsqueeze(-1).unsqueeze(-1), dim=-3)
+        used = 0
+        ret = torch.empty(x.shape, dtype=self.dtype).to(device)
+        
+        for inp in self.inputs:
+            full = used + inp.config.vs_dim
 
-        # conceptually, selecting which component of the lie group to use for each member of the batch
-        discrete = self.discrete[torch.randint(self.discrete.shape[0], (bs, )).to(device)]
-
-        if not config.ONLY_IDENTITY_COMPONENT:
-            # train either discrete or continuous in one round
-            if np.random.random() > 0.5:
-                discrete = None
+            if inp.config.kind == 'lie':
+                vector = torch.sum(self.normalize_basis(inp.tensor) * coeffs.unsqueeze(-1).unsqueeze(-1), dim=-3)
+                ret[..., used:full] = self.transformer.apply_lie(vector, x[..., used:full])
             else:
-                continuous = None
+                norm = self.normalize_basis(inp.tensor) 
+                vector = torch.sum(norm * coeffs.unsqueeze(-1), dim=-2)
+                ret[..., used:full] = self.transformer.apply_jacobian(vector, inp.b, x[..., used:full])
 
-        # conceptually, this is g * x. The feature field object defines how exactly to apply g
-        return self.transformer.apply(discrete, continuous, x)
+            used = full
+
+        return ret
 
     # called by LocalTrainer during training
     def loss(self, ypred, ytrue):
@@ -97,8 +136,9 @@ class GroupBasis(nn.Module):
 
     def regularization(self):
         # regularization:
-        # aim for as 'orthogonal' as possible basis matrices
-        r1 = (self.similarity_loss(self.discrete) +
-              self.similarity_loss(self.normalized_continuous()))
+        # aim for as 'orthogonal' as possible basis matrices and in general avoid identity collapse
+        r1 = 0
+        for inp in self.inputs:
+            r1 += inp.reg()
 
         return r1 * config.IDENTITY_COLLAPSE_REGULARIZATION
