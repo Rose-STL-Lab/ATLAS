@@ -76,12 +76,11 @@ if __name__ == '__main__':
     basis = GroupBasis([
         FFConfig('jacobian', 1, lambda_dim=1, manifold_dim=4), 
         FFConfig('jacobian', 3, lambda_dim=1, manifold_dim=4)
-    ], transformer, 1)
+    ], transformer, 1, invar_fac=30, coeff_epsilon=1, lr=1e-3)
 
     dataset = EmDataset(N)
     loader = torch.utils.data.DataLoader(dataset, batch_size=bs, shuffle=True)
 
     gdn = LocalTrainer(predictor, basis)
     # output manifold are very small and thus this needs to be strengthened
-    gdn.invariance_fac = 30
     gdn.train(loader, epochs)

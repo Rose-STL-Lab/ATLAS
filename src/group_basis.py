@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-from utils import get_device
+from utils import get_device, rmse
 device = get_device()
 
 class FFConfig:
@@ -36,44 +36,54 @@ class FeatureFieldBasis(nn.Module):
             nn.init.normal_(self.tensor, 0, 0.02)
             nn.init.normal_(self.b, 0, 0.02)
 
-    def similarity_loss(self, x):
+    def similarity_loss(self, e, x):
         def derangement(n):
             """ 
-                generates random derangement (not necessarily uniform)
+                generates random derangement (not uniformly, just cycles)
             """
 
             perm = torch.tensor(list(range(n))).to(device)
-            for i in range(1, n):
-                j = np.random.randint(i)
-                perm[[i, j]] = perm[[j, i]]
-
-            return perm
+            return torch.roll(perm, (np.random.randint(n)))
 
         xp = x[derangement(len(x))]
         denom = torch.sum(torch.real(x * torch.conj(x)))
+
         if self.dtype == torch.complex64:
+            if e < 5:
+                return torch.abs(torch.sum(
+                    torch.real(x) * torch.real(xp) + 
+                    torch.imag(x) * torch.imag(xp)
+                )) / denom
+
             return torch.sum(
                 torch.abs(torch.real(x) * torch.real(xp)) + 
                 torch.abs(torch.imag(x) * torch.imag(xp))
             ) / denom
         else:
+            if e < 5:
+                return torch.abs(torch.sum(
+                    x * xp 
+                )) / denom
+
             return torch.sum(torch.abs(x * xp)) / denom
 
-    def reg(self):
+    def reg(self, e):
         if self.config.kind == 'lie':
-            return self.similarity_loss(self.tensor)
+            return self.similarity_loss(e, self.tensor)
         else:
-            return self.similarity_loss(self.tensor) -  \
+            # encourage non trivial B matrix with many values, but only to a certain point (min 1)
+            return self.similarity_loss(e, self.tensor) -  \
                 torch.sum(torch.minimum(torch.tensor(1).to(device), torch.abs(self.b)))
 
 class GroupBasis(nn.Module):
-    # lie_epsilon: if any manifold is lie, then coefficient sampling is multiplied by that radius
-    def __init__(self, input_ffs, transformer, num_basis, lr=5e-4, lie_epsilon=1e-2, dtype=torch.float32):
+    def __init__(self, input_ffs, transformer, num_basis, invar_fac=3, reg_fac=0.1, lr=3e-4, coeff_epsilon=1e-1, dtype=torch.float32):
         super().__init__()
         self.transformer = transformer
         self.num_basis = num_basis
-        self.lie_epsilon = lie_epsilon
+        self.coeff_epsilon = coeff_epsilon
         self.dtype = dtype
+        self.invar_fac = invar_fac
+        self.reg_fac = reg_fac
 
         self.inputs = nn.ModuleList([FeatureFieldBasis(ff, num_basis, dtype) for ff in input_ffs])
 
@@ -99,13 +109,7 @@ class GroupBasis(nn.Module):
             to be taken only as real numbers.
         """
         num_key_points = self.transformer.num_key_points()
-        raw = torch.normal(0, 1, (bs, num_key_points, self.num_basis)).to(device)
-
-        # lie works much better with infitesimal generators
-        if any(inp.config.kind == 'lie' for inp in self.inputs):
-            raw *= self.lie_epsilon
-
-        return raw
+        return torch.normal(0, self.coeff_epsilon, (bs, num_key_points, self.num_basis)).to(device) 
 
     def apply(self, x):
         """
@@ -134,15 +138,16 @@ class GroupBasis(nn.Module):
 
         return ret
 
-    # called by LocalTrainer during training
-    def loss(self, ypred, ytrue):
-        return torch.sqrt(torch.mean(torch.square(ytrue - ypred)) + 1e-6)
+    def loss(self, xx, yy):
+        raw = rmse(xx, yy)
+        return raw * self.invar_fac
 
-    def regularization(self):
+    # called by LocalTrainer during training
+    def regularization(self, e):
         # regularization:
         # aim for as 'orthogonal' as possible basis matrices and in general avoid identity collapse
         r1 = 0
         for inp in self.inputs:
-            r1 += inp.reg()
+            r1 += inp.reg(e)
 
-        return r1 
+        return r1 * self.reg_fac

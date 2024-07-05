@@ -28,6 +28,7 @@ class LnDataset(torch.utils.data.Dataset):
     def __init__(self, N):
         self.N = N
 
+        # doesnt need to be smooth in this case
         self.tensor = torch.normal(0, 1, (N, DIM_SIZE, DIM_SIZE, VECTOR_DIM), dtype=torch.complex64).to(device)
 
     def __len__(self):
@@ -38,7 +39,7 @@ class LnDataset(torch.utils.data.Dataset):
 
 
 if __name__ == '__main__':
-    epochs = 25
+    epochs = 30
     N = 10000
     bs = 64
 

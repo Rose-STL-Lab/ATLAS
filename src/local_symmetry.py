@@ -2,7 +2,7 @@ import numpy as np
 import torch
 from abc import ABC, abstractmethod
 
-from utils import mae
+from utils import rmse
 
 
 class Predictor(ABC):
@@ -13,7 +13,7 @@ class Predictor(ABC):
         pass
 
     def loss(self, y_pred, y_true):
-        return mae(y_pred, y_true)
+        return rmse(y_pred, y_true)
 
     # some predictors can be given as fixed functions
     def needs_training(self):
@@ -21,17 +21,15 @@ class Predictor(ABC):
 
 
 class LocalTrainer:
-    def __init__(self, predictor, basis, invariance_fac=3, reg_fac=0.1, debug=True):
+    def __init__(self, predictor, basis, debug=True):
         """
             predictor: local_symmetry.py/Predictor
-                This corresponds to xi in the propoasl
-            basis: lie_basis.py/GroupBasis
+                This corresponds to xi in the proposal 
+            basis: GroupBasis
                 Basis for the discovered symmetry group (somewhat corresponding to G in the proposal)
         """
         self.predictor = predictor
         self.basis = basis
-        self.invariance_fac = invariance_fac
-        self.reg_fac = reg_fac
        
         if debug:
             torch.autograd.set_detect_anomaly(True)
@@ -59,10 +57,10 @@ class LocalTrainer:
                 xp = self.basis.apply(xx)
                 model_prediction = self.predictor.run(xp)
 
-                b_loss = self.basis.loss(model_prediction, yy) * self.invariance_fac
+                b_loss = self.basis.loss(model_prediction, yy) 
                 b_losses.append(float(b_loss.detach().cpu()))
 
-                b_loss += self.basis.regularization() * self.reg_fac
+                b_loss += self.basis.regularization(e)
                 b_reg.append(float(b_loss.detach().cpu()))
 
                 self.basis.optimizer.zero_grad()

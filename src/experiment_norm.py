@@ -41,7 +41,7 @@ if __name__ == '__main__':
     
     # the sub division rate doesn't really matter as we don't require smoothness anyway
     transformer = TorusFFTransformer(MAN_DIM, MAN_DIM, 5, 5)
-    basis = GroupBasis([FFConfig('lie', VECTOR_DIM)], transformer, 3)
+    basis = GroupBasis([FFConfig('lie', VECTOR_DIM)], transformer, 3, lr=5e-4)
 
     dataset = NormDataset(N)
     loader = torch.utils.data.DataLoader(dataset, batch_size=bs, shuffle=True)

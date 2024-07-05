@@ -2,6 +2,10 @@ import torch
 import numpy as np
 
 
+def rmse(xx, yy):
+    return torch.sqrt(torch.mean(torch.square(xx - yy)))
+
+
 def mae(xx, yy):
     return torch.mean(torch.abs(xx - yy))
 
