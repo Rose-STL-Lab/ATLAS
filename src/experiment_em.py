@@ -82,4 +82,6 @@ if __name__ == '__main__':
     loader = torch.utils.data.DataLoader(dataset, batch_size=bs, shuffle=True)
 
     gdn = LocalTrainer(predictor, basis)
+    # output manifold are very small and thus this needs to be strengthened
+    gdn.invariance_fac = 30
     gdn.train(loader, epochs)

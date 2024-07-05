@@ -3,7 +3,6 @@ import torch
 from abc import ABC, abstractmethod
 
 from utils import mae
-import config
 
 
 class Predictor(ABC):
@@ -22,7 +21,7 @@ class Predictor(ABC):
 
 
 class LocalTrainer:
-    def __init__(self, predictor, basis):
+    def __init__(self, predictor, basis, invariance_fac=3, reg_fac=0.1, debug=True):
         """
             predictor: local_symmetry.py/Predictor
                 This corresponds to xi in the propoasl
@@ -31,8 +30,10 @@ class LocalTrainer:
         """
         self.predictor = predictor
         self.basis = basis
+        self.invariance_fac = invariance_fac
+        self.reg_fac = reg_fac
        
-        if config.DEBUG:
+        if debug:
             torch.autograd.set_detect_anomaly(True)
             torch.set_printoptions(precision=5, sci_mode=False)
 
@@ -58,10 +59,10 @@ class LocalTrainer:
                 xp = self.basis.apply(xx)
                 model_prediction = self.predictor.run(xp)
 
-                b_loss = self.basis.loss(model_prediction, yy) * config.INVARIANCE_LOSS_COEFF
+                b_loss = self.basis.loss(model_prediction, yy) * self.invariance_fac
                 b_losses.append(float(b_loss.detach().cpu()))
 
-                b_loss += self.basis.regularization()
+                b_loss += self.basis.regularization() * self.reg_fac
                 b_reg.append(float(b_loss.detach().cpu()))
 
                 self.basis.optimizer.zero_grad()

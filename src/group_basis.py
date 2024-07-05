@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import numpy as np
 
-import config
 from utils import get_device
 device = get_device()
 
@@ -68,11 +67,12 @@ class FeatureFieldBasis(nn.Module):
                 torch.sum(torch.minimum(torch.tensor(1).to(device), torch.abs(self.b)))
 
 class GroupBasis(nn.Module):
-    def __init__(self, input_ffs, transformer, num_basis, lr=5e-4, dtype=torch.float32):
+    # lie_epsilon: if any manifold is lie, then coefficient sampling is multiplied by that radius
+    def __init__(self, input_ffs, transformer, num_basis, lr=5e-4, lie_epsilon=1e-2, dtype=torch.float32):
         super().__init__()
-      
         self.transformer = transformer
         self.num_basis = num_basis
+        self.lie_epsilon = lie_epsilon
         self.dtype = dtype
 
         self.inputs = nn.ModuleList([FeatureFieldBasis(ff, num_basis, dtype) for ff in input_ffs])
@@ -82,7 +82,6 @@ class GroupBasis(nn.Module):
     def summary(self):
         return [self.normalize_basis(inp.tensor).data if inp.config.kind == 'lie' else inp.b.data for inp in self.inputs] 
 
-    # From LieGan
     def normalize_basis(self, tensor):
         if len(tensor.shape) == 3:
             trace = torch.abs(torch.einsum('kdf,kdf->k', tensor, tensor))
@@ -100,8 +99,13 @@ class GroupBasis(nn.Module):
             to be taken only as real numbers.
         """
         num_key_points = self.transformer.num_key_points()
-        unnormalized = torch.abs(torch.normal(0, 1, (bs, num_key_points, self.num_basis)).to(device))
-        return unnormalized / torch.sum(unnormalized / num_key_points, dim=1, keepdim=True)
+        raw = torch.normal(0, 1, (bs, num_key_points, self.num_basis)).to(device)
+
+        # lie works much better with infitesimal generators
+        if any(inp.config.kind == 'lie' for inp in self.inputs):
+            raw *= self.lie_epsilon
+
+        return raw
 
     def apply(self, x):
         """
@@ -117,12 +121,12 @@ class GroupBasis(nn.Module):
         
         for inp in self.inputs:
             full = used + inp.config.vs_dim
+            norm = self.normalize_basis(inp.tensor) 
 
             if inp.config.kind == 'lie':
-                vector = torch.sum(self.normalize_basis(inp.tensor) * coeffs.unsqueeze(-1).unsqueeze(-1), dim=-3)
+                vector = torch.sum(norm * coeffs.unsqueeze(-1).unsqueeze(-1), dim=-3)
                 ret[..., used:full] = self.transformer.apply_lie(vector, x[..., used:full])
             else:
-                norm = self.normalize_basis(inp.tensor) 
                 vector = torch.sum(norm * coeffs.unsqueeze(-1), dim=-2)
                 ret[..., used:full] = self.transformer.apply_jacobian(vector, inp.b, x[..., used:full])
 
@@ -141,4 +145,4 @@ class GroupBasis(nn.Module):
         for inp in self.inputs:
             r1 += inp.reg()
 
-        return r1 * config.IDENTITY_COLLAPSE_REGULARIZATION
+        return r1 
