@@ -36,21 +36,24 @@ class FeatureFieldBasis(nn.Module):
             nn.init.normal_(self.tensor, 0, 0.02)
             nn.init.normal_(self.b, 0, 0.02)
 
-    def similarity_loss(self, constrained_reg, x):
+    def similarity_loss(self, orthonormal, x):
         def derangement(n):
             """ 
                 generates random derangement (not uniformly, just cycles)
             """
 
+            if n == 0:
+                return torch.tensor([0]).to(device)
+
             perm = torch.tensor(list(range(n))).to(device)
-            return torch.roll(perm, (np.random.randint(n)))
+            return torch.roll(perm, (1 + np.random.randint(n - 1)))
 
         xp = x[derangement(len(x))]
         denom = torch.sum(torch.real(x * torch.conj(x)))
 
         if self.dtype == torch.complex64:
-            if constrained_reg:
-                return torch.abs(torch.sum(
+            if orthonormal:
+                return 0.1 * torch.abs(torch.sum(
                     torch.real(x) * torch.real(xp) + 
                     torch.imag(x) * torch.imag(xp)
                 )) / denom
@@ -60,22 +63,22 @@ class FeatureFieldBasis(nn.Module):
                     torch.abs(torch.imag(x) * torch.imag(xp))
                 ) / denom
         else:
-            if constrained_reg:
-                return torch.abs(torch.sum(x * xp)) / denom
+            if orthonormal:
+                return 0.1 * torch.abs(torch.sum(x * xp)) / denom
             else:
                 return torch.sum(torch.abs(x * xp)) / denom
 
-    def reg(self, constrained_reg):
+    def reg(self, orthonormal):
         if self.config.kind == 'lie':
-            return self.similarity_loss(constrained_reg, self.tensor)
+            return self.similarity_loss(orthonormal, self.tensor)
         else:
             # encourage non trivial B matrix with many values, but only to a certain point (min 1)
-            return self.similarity_loss(constrained_reg, self.tensor) -  \
+            return self.similarity_loss(orthonormal, self.tensor) -  \
                 torch.sum(torch.minimum(torch.tensor(1).to(device), torch.abs(self.b)))
 
 class GroupBasis(nn.Module):
     # reg switchover says when to switch from orthonormal to constrained orthonormal loss
-    def __init__(self, input_ffs, transformer, num_basis, invar_fac=3, reg_fac=0.1, lr=3e-4, reg_switchover=5, coeff_epsilon=1e-1, dtype=torch.float32):
+    def __init__(self, input_ffs, transformer, num_basis, invar_fac=3, reg_fac=0.1, lr=3e-4, reg_switchover=7, coeff_epsilon=1e-1, dtype=torch.float32):
         super().__init__()
         self.transformer = transformer
         self.num_basis = num_basis
@@ -148,6 +151,6 @@ class GroupBasis(nn.Module):
         # aim for as 'orthogonal' as possible basis matrices and in general avoid identity collapse
         r1 = 0
         for inp in self.inputs:
-            r1 += inp.reg(e >= self.reg_switchover)
+            r1 += inp.reg(e < self.reg_switchover)
 
         return r1 * self.reg_fac
