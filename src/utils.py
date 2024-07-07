@@ -67,3 +67,10 @@ def barycentric_2d(p, q, r, test):
     assert p_prime + q_prime + r_prime <= total + 1e-3
 
     return (p_prime / total, q_prime / total, r_prime / total)
+
+def affine_coord(tensor, dummy_pos=None):
+    # tensor: B*T*K
+    if dummy_pos is not None:
+        return tensor / tensor[..., dummy_pos].unsqueeze(-1)
+    else:
+        return tensor
