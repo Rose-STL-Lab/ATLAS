@@ -93,6 +93,10 @@ class GroupBasis(nn.Module):
 
     # called by LocalTrainer during training
     def loss(self, ypred, ytrue):
+        print(ypred)
+        print(ypred.size())
+        print(ytrue)
+        print(ytrue.size())
         return torch.sqrt(torch.mean(torch.square(ytrue - ypred)) + 1e-6)
 
     def regularization(self):
