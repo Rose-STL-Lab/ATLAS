@@ -62,6 +62,7 @@ class LocalTrainer:
             # train basis
             b_losses = []
             b_reg = []
+            """
             for xx,yy in tqdm.tqdm(xxyy):
                 xp = self.basis.apply(xx)
                 model_prediction = self.predictor.run(xp)
@@ -85,6 +86,7 @@ class LocalTrainer:
                 self.basis.optimizer.zero_grad()
                 b_loss.backward()
                 self.basis.optimizer.step()
+            """
             b_losses = np.mean(b_losses) if len(b_losses) else 0
             b_reg = np.mean(b_reg ) if len(b_reg ) else 0
         

@@ -27,7 +27,7 @@ class ClassPredictor(Predictor):
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=5e-4)
     
     def __call__(self, x):
-        return self.model(x.reshape(-1, self.n_dim * self.n_components).to(device))
+        return self.run(x)
 
     def run(self, x):
         return self.model(x.reshape(-1, self.n_dim * self.n_components).to(device))
@@ -42,12 +42,14 @@ class TopTagging(torch.utils.data.Dataset):
         df = df.to_numpy()
         self.X = df[:, :4*n_component]
         self.X = self.X * np.random.uniform(1-noise, 1+noise, size=self.X.shape)
-        self.y = df[:, -1]
         self.X = torch.FloatTensor(self.X).to(device)
         if not flatten:
             self.X = self.X.reshape(-1, n_component, 4)
-        self.y = torch.LongTensor(self.y).to(device)
         self.len = self.X.shape[0]
+        
+        y_index = torch.LongTensor(df[:, -1], device=device)
+        self.y = torch.zeros((self.len, 2), device=device)
+        self.y[y_index] = 1
 
     def __len__(self):
         return self.len
@@ -57,7 +59,7 @@ class TopTagging(torch.utils.data.Dataset):
 
 
 if __name__ == '__main__':
-    epochs = 25
+    epochs = 125
     N = 1000
     bs = 64
 
