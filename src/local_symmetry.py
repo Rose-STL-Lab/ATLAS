@@ -59,6 +59,10 @@ class LocalTrainer:
                 xp = self.basis.apply(xx)
                 model_prediction = self.predictor.run(xp)
 
+                print("xp")
+                print(xp.size())
+                print(xp)
+
                 if config.EXPERIMENT_TYPE == "toptagging":
                     criterion = nn.CrossEntropyLoss(reduction='mean')
                     b_loss = criterion(model_prediction, yy)
