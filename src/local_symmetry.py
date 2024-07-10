@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
+import tqdm
 from abc import ABC, abstractmethod
 
 from utils import mae
@@ -42,9 +43,15 @@ class LocalTrainer:
             # train predictor
             p_losses = []
             if self.predictor.needs_training():
-                for xx, yy in xxyy:
+                for xx,yy in tqdm.tqdm(xxyy):
                     y_pred = self.predictor(xx)
-                    p_loss = self.predictor.loss(y_pred, yy)
+
+                    if config.EXPERIMENT_TYPE == "toptagging":
+                        criterion = nn.CrossEntropyLoss(reduction='mean')
+                        p_loss = criterion(y_pred, yy)
+                    else:
+                        p_loss = self.predictor.loss(y_pred, yy)
+
                     p_losses.append(float(p_loss.detach().cpu()))
 
                     self.predictor.optimizer.zero_grad()
@@ -55,7 +62,7 @@ class LocalTrainer:
             # train basis
             b_losses = []
             b_reg = []
-            for xx, yy in xxyy:
+            for xx,yy in tqdm.tqdm(xxyy):
                 xp = self.basis.apply(xx)
                 model_prediction = self.predictor.run(xp)
 

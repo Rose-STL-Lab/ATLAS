@@ -10,8 +10,8 @@ from group_basis import GroupBasis
 from ff_transformer import SingletonFFTransformer
 
 device = get_device()
-
-class AugClassificationModel(nn.Module):
+    
+class ClassPredictor(Predictor):
     def __init__(self, n_dim, n_components, n_classes):
         super().__init__()
         self.n_dim = n_dim
@@ -23,61 +23,20 @@ class AugClassificationModel(nn.Module):
             nn.Linear(512, 512),
             nn.ReLU(),
             nn.Linear(512, n_classes),
-        )
-    def forward(self, x):
-        return self.model(x.reshape(-1, self.n_dim * self.n_components))
+        ).to(device)
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=5e-4)
     
-class ClassPredictor(Predictor):
-    # def __init__(self, n_dim, n_components, n_classes):
-    #     super().__init__()
-    #     self.n_dim = n_dim
-    #     self.n_components = n_components
-    #     self.n_classes = n_classes
-    #     self.model = nn.Sequential(
-    #         nn.Linear(n_dim * n_components, 512),
-    #         nn.ReLU(),
-    #         nn.Linear(512, 512),
-    #         nn.ReLU(),
-    #         nn.Linear(512, n_classes),
-    #     ).to(device)
-    # 
-    # def run(self, x):
-    #     return self.model(x.reshape(-1, self.n_dim * self.n_components).to(device))
+    def __call__(self, x):
+        return self.model(x.reshape(-1, self.n_dim * self.n_components).to(device))
 
-    def __init__(self, n_dim, n_channel):
-        self.model = AugClassificationModel(n_dim, 2, 2).to(device)
-        self.n_dim = n_dim
-        self.n_channel = n_channel
-        self.Li = nn.Parameter(torch.randn(n_channel, n_dim, n_dim)).to(device)
-        self.sigma = nn.Parameter(torch.eye(n_channel, n_channel)).to(device)
-        self.mu = nn.Parameter(torch.zeros(n_channel)).to(device)
-        self.dummy_pos = None
-
-    def normalize_factor(self):
-        trace = torch.einsum('kdf,kdf->k', self.Li, self.Li)
-        factor = torch.sqrt(trace / self.Li.shape[1])
-        return factor.unsqueeze(-1).unsqueeze(-1)
-
-    def normalize_L(self):
-        return self.Li / (self.normalize_factor() + 1e-6)
-
-    # x: (batch_size, n_components, n_dim); y: (batch_size, n_components_y, n_dim)
     def run(self, x):
-        if len(x.shape) == 2:
-            x.unsqueeze_(1)
-        batch_size = x.shape[0]
-        #z = self.sample_coefficient(batch_size, x.device)
-        z = torch.randn(batch_size, self.n_channel, device=device) @ self.sigma + self.mu
-        Li = self.normalize_L()
-        g_z = torch.matrix_exp(torch.einsum('bj,jkl->bkl', z, Li))
-        x_p = affine_coord(torch.einsum('bjk,btk->btj', g_z, x), self.dummy_pos)
-        return self.model(x_p)
+        return self.model(x.reshape(-1, self.n_dim * self.n_components).to(device))
 
     def needs_training(self):
-        return False
+        return True
 
 class TopTagging(torch.utils.data.Dataset):
-    def __init__(self, path='./data/top-tagging/val.h5', flatten=False, n_component=3, noise=0.0):
+    def __init__(self, path='./data/top-tagging/train.h5', flatten=False, n_component=3, noise=0.0):
         super().__init__()
         df = pd.read_hdf(path, key='table')
         df = df.to_numpy()
@@ -110,7 +69,7 @@ if __name__ == '__main__':
     # emb_size = 32
 
     # predictor from LieGAN codebase
-    predictor = ClassPredictor(n_dim, n_component)
+    predictor = ClassPredictor(n_dim, n_component, n_class)
 
     transformer = SingletonFFTransformer()
     basis = GroupBasis(4, transformer, 6, 3)
