@@ -62,7 +62,7 @@ if __name__ == '__main__':
     bs = 64
 
     n_dim = 4
-    n_component = 2
+    n_component = 30
     n_class = 2
 
     # n_channel = 7
@@ -73,7 +73,7 @@ if __name__ == '__main__':
     predictor = ClassPredictor(n_dim, n_component, n_class)
 
     transformer = SingletonFFTransformer((n_component, ))
-    basis = GroupBasis(4, transformer, 6, 3)
+    basis = GroupBasis(4, transformer, 7, 3)
 
     # dataset from LieGAN codebase
     dataset = TopTagging(n_component=n_component)

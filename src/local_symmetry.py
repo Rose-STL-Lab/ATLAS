@@ -47,8 +47,6 @@ class LocalTrainer:
                     y_pred = self.predictor(xx)
 
                     p_loss = torch.nn.functional.cross_entropy(y_pred, yy)
-                    print(y_pred, yy)
-
                     p_losses.append(float(p_loss.detach().cpu()))
 
                     self.predictor.optimizer.zero_grad()
@@ -59,7 +57,6 @@ class LocalTrainer:
             # train basis
             b_losses = []
             b_reg = []
-            """
             for xx,yy in tqdm.tqdm(xxyy):
                 xp = self.basis.apply(xx)
                 model_prediction = self.predictor.run(xp)
@@ -69,16 +66,15 @@ class LocalTrainer:
                 # don't include regularization in outputs
                 b_losses.append(float(b_loss.detach().cpu()))
 
-                b_loss += self.basis.regularization()
+                b_loss += self.basis.regularization(e)
                 
                 b_reg.append(float(b_loss.detach().cpu()))
 
                 self.basis.optimizer.zero_grad()
                 b_loss.backward()
                 self.basis.optimizer.step()
-            """
             b_losses = np.mean(b_losses) if len(b_losses) else 0
-            b_reg = np.mean(b_reg ) if len(b_reg ) else 0
+            b_reg = np.mean(b_reg) if len(b_reg) else 0
         
             print("Continuous GL(n) \n", self.basis.normalized_continuous().data)
             print("Epoch", e, "Predictor loss", p_losses, "Basis loss", b_losses, "Basis reg", b_reg)

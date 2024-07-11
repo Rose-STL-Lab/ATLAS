@@ -32,7 +32,7 @@ class GroupBasis(nn.Module):
     def input_dimension(self):
         return self.input_dim
 
-    def similarity_loss(self, x):
+    def similarity_loss(self, e, x):
         if len(x) <= 1:
             return 0
 
@@ -58,6 +58,9 @@ class GroupBasis(nn.Module):
         """
 
         # constrained
+        # if e <= 10:
+        #    return torch.sum(torch.abs(torch.sum(x * xp / denom.unsqueeze(-1).unsqueeze(-1), dim=(-1, -2))))
+
         return torch.sum(torch.abs(x * xp / denom.unsqueeze(-1).unsqueeze(-1)))
 
     # From LieGan
@@ -109,9 +112,9 @@ class GroupBasis(nn.Module):
         return nn.functional.cross_entropy(ypred, ytrue)
         # return torch.sqrt(torch.mean(torch.square(ytrue - ypred)) + 1e-6)
 
-    def regularization(self):
+    def regularization(self, e):
         # regularization:
         # aim for as 'orthogonal' as possible basis matrices
-        r1 = self.similarity_loss(self.normalized_continuous())
+        r1 = self.similarity_loss(e, self.normalized_continuous())
 
         return r1 * config.IDENTITY_COLLAPSE_REGULARIZATION
