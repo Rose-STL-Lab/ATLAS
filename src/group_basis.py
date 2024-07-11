@@ -58,9 +58,6 @@ class GroupBasis(nn.Module):
         """
 
         # constrained
-        # if e <= 10:
-        #    return torch.sum(torch.abs(torch.sum(x * xp / denom.unsqueeze(-1).unsqueeze(-1), dim=(-1, -2))))
-
         return torch.sum(torch.abs(x * xp / denom.unsqueeze(-1).unsqueeze(-1)))
 
     # From LieGan

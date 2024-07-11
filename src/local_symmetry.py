@@ -52,6 +52,8 @@ class LocalTrainer:
                     self.predictor.optimizer.zero_grad()
                     p_loss.backward()
                     self.predictor.optimizer.step()
+
+                torch.save(self.predictor, "models/toptagclass.pt")
             p_losses = np.mean(p_losses) if len(p_losses) else 0
                 
             # train basis
@@ -75,6 +77,7 @@ class LocalTrainer:
                 self.basis.optimizer.step()
             b_losses = np.mean(b_losses) if len(b_losses) else 0
             b_reg = np.mean(b_reg) if len(b_reg) else 0
+
         
             print("Continuous GL(n) \n", self.basis.normalized_continuous().data)
             print("Epoch", e, "Predictor loss", p_losses, "Basis loss", b_losses, "Basis reg", b_reg)
