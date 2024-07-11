@@ -8,11 +8,13 @@ device = get_device()
 
 
 class GroupBasis(nn.Module):
-    def __init__(self, input_dim, transformer, num_basis, num_cosets, lr=5e-4, dtype=torch.float32):
+    def __init__(self, input_dim, transformer, num_basis, num_cosets, lr=5e-4, coeff_epsilon=1e-1, dtype=torch.float32):
         super().__init__()
       
         self.input_dim = input_dim
         self.transformer = transformer
+        self.coeff_epsilon = coeff_epsilon
+        self.num_basis = num_basis
 
         # lie elements
         self.continuous = nn.Parameter(torch.empty((num_basis, input_dim, input_dim), dtype=dtype).to(device))
@@ -31,20 +33,32 @@ class GroupBasis(nn.Module):
         return self.input_dim
 
     def similarity_loss(self, x):
+        if len(x) <= 1:
+            return 0
+
         def derangement(n):
-            """ 
-                generates random derangement (not necessarily uniform)
+            """
+                generates random derangement (not uniformly, just cycles)
             """
 
             perm = torch.tensor(list(range(n))).to(device)
-            for i in range(1, n):
-                j = np.random.randint(i)
-                perm[[i, j]] = perm[[j, i]]
-
-            return perm
+            return torch.roll(perm, (1 + np.random.randint(n - 1)))
 
         xp = x[derangement(len(x))]
-        return torch.real(torch.sum(torch.abs(x * xp)) / torch.sum(x * torch.conj(x)))
+        denom = torch.sum(torch.real(x * torch.conj(x)), dim=(-2, -1))
+
+        """
+        if self.dtype == torch.complex64:
+            return torch.abs(torch.sum((
+                torch.real(x) * torch.real(xp) +
+                torch.imag(x) * torch.imag(xp)
+            ) / denom.unsqueeze(-1).unsqueeze(-1)))
+        else:
+            return torch.abs(torch.sum(x * xp / denom))
+        """
+
+        # constrained
+        return torch.sum(torch.abs(x * xp / denom.unsqueeze(-1).unsqueeze(-1)))
 
     # From LieGan
     def normalize_factor(self):
@@ -62,8 +76,7 @@ class GroupBasis(nn.Module):
             to be taken only as real numbers.
         """
         num_key_points = self.transformer.num_key_points()
-        unnormalized = torch.abs(torch.normal(0, 1, (bs, num_key_points, self.continuous.shape[0])).to(device))
-        return unnormalized / torch.sum(unnormalized, dim=1, keepdim=True)
+        return torch.normal(0, self.coeff_epsilon, (bs, num_key_points, self.num_basis)).to(device)
 
     def apply(self, x):
         """
@@ -93,16 +106,12 @@ class GroupBasis(nn.Module):
 
     # called by LocalTrainer during training
     def loss(self, ypred, ytrue):
-        print(ypred)
-        print(ypred.size())
-        print(ytrue)
-        print(ytrue.size())
-        return torch.sqrt(torch.mean(torch.square(ytrue - ypred)) + 1e-6)
+        return nn.functional.cross_entropy(ypred, ytrue)
+        # return torch.sqrt(torch.mean(torch.square(ytrue - ypred)) + 1e-6)
 
     def regularization(self):
         # regularization:
         # aim for as 'orthogonal' as possible basis matrices
-        r1 = (self.similarity_loss(self.discrete) +
-              self.similarity_loss(self.normalized_continuous()))
+        r1 = self.similarity_loss(self.normalized_continuous())
 
         return r1 * config.IDENTITY_COLLAPSE_REGULARIZATION

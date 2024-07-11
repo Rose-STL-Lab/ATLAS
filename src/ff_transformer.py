@@ -170,5 +170,5 @@ class R3BarycentricFFTransformer(FFTransformer):
         super().__init__(r3_blending_matrix(ff_shape, subdivisions));
 
 class SingletonFFTransformer(FFTransformer):
-    def __init__(self):
-        super().__init__(torch.ones((1, 4)).to(device))
+    def __init__(self, manifold_size):
+        super().__init__(torch.ones((*manifold_size, 1)).to(device))

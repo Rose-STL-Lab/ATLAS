@@ -46,11 +46,8 @@ class LocalTrainer:
                 for xx,yy in tqdm.tqdm(xxyy):
                     y_pred = self.predictor(xx)
 
-                    if config.EXPERIMENT_TYPE == "toptagging":
-                        criterion = nn.CrossEntropyLoss(reduction='mean')
-                        p_loss = criterion(y_pred, yy)
-                    else:
-                        p_loss = self.predictor.loss(y_pred, yy)
+                    p_loss = torch.nn.functional.cross_entropy(y_pred, yy)
+                    print(y_pred, yy)
 
                     p_losses.append(float(p_loss.detach().cpu()))
 
@@ -62,6 +59,7 @@ class LocalTrainer:
             # train basis
             b_losses = []
             b_reg = []
+            """
             for xx,yy in tqdm.tqdm(xxyy):
                 xp = self.basis.apply(xx)
                 model_prediction = self.predictor.run(xp)
@@ -78,10 +76,10 @@ class LocalTrainer:
                 self.basis.optimizer.zero_grad()
                 b_loss.backward()
                 self.basis.optimizer.step()
+            """
             b_losses = np.mean(b_losses) if len(b_losses) else 0
             b_reg = np.mean(b_reg ) if len(b_reg ) else 0
         
-            print("Discrete GL(n) \n", self.basis.discrete.data) 
             print("Continuous GL(n) \n", self.basis.normalized_continuous().data)
             print("Epoch", e, "Predictor loss", p_losses, "Basis loss", b_losses, "Basis reg", b_reg)
 
