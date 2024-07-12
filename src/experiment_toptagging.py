@@ -47,7 +47,7 @@ class TopTagging(torch.utils.data.Dataset):
             self.X = self.X.reshape(-1, n_component, 4)
         self.len = self.X.shape[0]
         
-        self.y = torch.LongTensor(df[:, -1], device=device)
+        self.y = torch.LongTensor(df[:, -1]).to(device)
 
     def __len__(self):
         return self.len
