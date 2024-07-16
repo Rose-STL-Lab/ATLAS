@@ -48,26 +48,6 @@ class FFTransformer(ABC):
 
         return (matrices @ feature_field.unsqueeze(-1)).squeeze(-1)
 
-    def jacobian(self, field):
-        """
-            column vector jacobian
-            field: shape [batch, *manifold_size, lambda_dim]
-            return: shape [batch, *manifold_size, input_dim * lambda_dim]
-        """
-        raise NotImplementedError
-
-    def apply_jacobian(self, key_points, b, feature_field):
-        """
-            key_points: shape [batch, num_key_points, lambda_dim]
-            feature_field: the actual input value tensor of shape [batch, *manifold_shape, ff_dim]
-
-            A(x) -> A(x) + b * J(\Lambda)(x)
-        """
-
-        mult = self.smooth_function(key_points)
-        j = self.jacobian(mult)
-        return feature_field + (b @ j.unsqueeze(-1)).squeeze(-1)
-
 
 class TorusFFTransformer(FFTransformer):
     def __init__(self, u_dim, v_dim, u_keypoints, v_keypoints):
@@ -99,6 +79,12 @@ class TorusFFTransformer(FFTransformer):
                 blend_val[u, v, 3] = s * t
         
         super().__init__(blend_key, blend_val)
+
+class SingletonFFTransformer(FFTransformer):
+    def __init__(self, manifold_size):
+        key = torch.zeros((*manifold_size, 1), device=device, dtype=torch.long)
+        val = torch.ones((*manifold_size, 1), device=device)
+        super().__init__(key, val)
 
 class R4BilinearFFTransformer(FFTransformer):
     def __init__(self, dim, kdim):

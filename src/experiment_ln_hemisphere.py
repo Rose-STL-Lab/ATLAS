@@ -2,8 +2,9 @@ import torch
 import torch.nn as nn
 from utils import get_device
 from local_symmetry import Predictor, LocalTrainer
-from group_basis import GroupBasis, FFConfig
+from group_basis import GroupBasis 
 from ff_transformer import TorusFFTransformer
+from config import Config
 
 device = get_device()
 
@@ -43,9 +44,10 @@ if __name__ == '__main__':
     N = 10000
     bs = 64
 
+    config = Config()
     predictor = LnPredictor()
     transformer = TorusFFTransformer(DIM_SIZE, DIM_SIZE, 4, 4)
-    basis = GroupBasis([FFConfig('lie', VECTOR_DIM)], transformer, 5, dtype=torch.complex64)
+    basis = GroupBasis(VECTOR_DIM, transformer, 5, config.standard_basis, dtype=torch.complex64)
 
     dataset = LnDataset(N)
     loader = torch.utils.data.DataLoader(dataset, batch_size=bs, shuffle=True)

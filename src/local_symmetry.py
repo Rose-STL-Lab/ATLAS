@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import tqdm
 from abc import ABC, abstractmethod
 
 from utils import rmse
@@ -33,14 +34,14 @@ class LocalTrainer:
        
         if debug:
             torch.autograd.set_detect_anomaly(True)
-            torch.set_printoptions(precision=5, sci_mode=False)
+            torch.set_printoptions(precision=9, sci_mode=False)
 
     def train(self, xxyy, epochs):
         for e in range(epochs):
             # train predictor
             p_losses = []
             if self.predictor.needs_training():
-                for xx, yy in xxyy:
+                for xx, yy in tqdm.tqdm(xxyy):
                     y_pred = self.predictor(xx)
                     p_loss = self.predictor.loss(y_pred, yy)
                     p_losses.append(float(p_loss.detach().cpu()))
@@ -53,7 +54,7 @@ class LocalTrainer:
             # train basis
             b_losses = []
             b_reg = []
-            for xx, yy in xxyy:
+            for xx, yy in tqdm.tqdm(xxyy):
                 xp = self.basis.apply(xx)
                 model_prediction = self.predictor.run(xp)
 
