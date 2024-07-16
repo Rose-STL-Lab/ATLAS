@@ -55,7 +55,7 @@ class LocalTrainer:
                     p_loss.backward()
                     self.predictor.optimizer.step()
 
-                torch.save(self.predictor, "models/toptagclass.pt")
+                torch.save(self.predictor, f"models/toptagclass_{e}.pt")
             p_losses = np.mean(p_losses) if len(p_losses) else 0
                 
             # train basis
