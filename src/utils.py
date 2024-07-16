@@ -1,6 +1,9 @@
 import torch
 import numpy as np
-import config
+
+
+def rmse(xx, yy):
+    return torch.sqrt(torch.mean(torch.square(xx - yy)))
 
 
 def mae(xx, yy):
@@ -9,12 +12,8 @@ def mae(xx, yy):
 
 def get_device(no_mps=True):
     if no_mps:
-        if config.DISABLE_CUDA:
-            return torch.device("cpu")
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    if config.DISABLE_CUDA:
-        return torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     return torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
 

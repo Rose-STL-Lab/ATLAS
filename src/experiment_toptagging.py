@@ -4,10 +4,11 @@ import torch
 import torch.nn as nn
 import pandas as pd
 import numpy as np
-from utils import get_device, affine_coord
+from utils import get_device 
 from local_symmetry import Predictor, LocalTrainer
 from group_basis import GroupBasis
 from ff_transformer import SingletonFFTransformer
+from config import Config
 
 device = get_device()
     
@@ -32,6 +33,9 @@ class ClassPredictor(Predictor):
     def run(self, x):
         ret = self.model(x.reshape(-1, self.n_dim * self.n_components).to(device))
         return ret
+
+    def loss(self, xx, yy):
+        return nn.functional.cross_entropy(xx, yy)
 
     def needs_training(self):
         return True
@@ -58,26 +62,23 @@ class TopTagging(torch.utils.data.Dataset):
 
 if __name__ == '__main__':
     epochs = 125
-    N = 1000
     bs = 64
 
     n_dim = 4
     n_component = 30
     n_class = 2
 
-    # n_channel = 7
-    # d_input_size = n_dim * n_component
-    # emb_size = 32
+    config = Config()
 
-    # predictor from LieGAN codebase
+    # predictor = torch.load('models/toptagclass.pt')
     predictor = ClassPredictor(n_dim, n_component, n_class)
 
     transformer = SingletonFFTransformer((n_component, ))
-    basis = GroupBasis(4, transformer, 7, 3)
+    basis = GroupBasis(4, transformer, 7, config.standard_basis, loss_type='cross_entropy')
 
-    # dataset from LieGAN codebase
     dataset = TopTagging(n_component=n_component)
     loader = torch.utils.data.DataLoader(dataset, batch_size=bs, shuffle=True)
 
     gdn = LocalTrainer(predictor, basis)
     gdn.train(loader, epochs)
+

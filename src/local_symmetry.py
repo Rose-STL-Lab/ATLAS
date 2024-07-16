@@ -1,11 +1,13 @@
 import numpy as np
 import torch
+<<<<<<< HEAD
 import torch.nn as nn
+=======
+>>>>>>> generalized_transform
 import tqdm
 from abc import ABC, abstractmethod
 
-from utils import mae
-import config
+from utils import rmse
 
 
 class Predictor(ABC):
@@ -16,7 +18,7 @@ class Predictor(ABC):
         pass
 
     def loss(self, y_pred, y_true):
-        return mae(y_pred, y_true)
+        return rmse(y_pred, y_true)
 
     # some predictors can be given as fixed functions
     def needs_training(self):
@@ -24,26 +26,26 @@ class Predictor(ABC):
 
 
 class LocalTrainer:
-    def __init__(self, predictor, basis):
+    def __init__(self, predictor, basis, debug=True):
         """
             predictor: local_symmetry.py/Predictor
-                This corresponds to xi in the propoasl
-            basis: lie_basis.py/GroupBasis
+                This corresponds to xi in the proposal 
+            basis: GroupBasis
                 Basis for the discovered symmetry group (somewhat corresponding to G in the proposal)
         """
         self.predictor = predictor
         self.basis = basis
        
-        if config.DEBUG:
+        if debug:
             torch.autograd.set_detect_anomaly(True)
-            torch.set_printoptions(precision=5, sci_mode=False)
+            torch.set_printoptions(precision=9, sci_mode=False)
 
     def train(self, xxyy, epochs):
         for e in range(epochs):
             # train predictor
             p_losses = []
             if self.predictor.needs_training():
-                for xx,yy in tqdm.tqdm(xxyy):
+                for xx, yy in tqdm.tqdm(xxyy):
                     y_pred = self.predictor(xx)
 
                     p_loss = torch.nn.functional.cross_entropy(y_pred, yy)
@@ -59,17 +61,14 @@ class LocalTrainer:
             # train basis
             b_losses = []
             b_reg = []
-            for xx,yy in tqdm.tqdm(xxyy):
+            for xx, yy in tqdm.tqdm(xxyy):
                 xp = self.basis.apply(xx)
                 model_prediction = self.predictor.run(xp)
 
-                b_loss = self.basis.loss(model_prediction, yy) * config.INVARIANCE_LOSS_COEFF
-                    
-                # don't include regularization in outputs
+                b_loss = self.basis.loss(model_prediction, yy) 
                 b_losses.append(float(b_loss.detach().cpu()))
 
                 b_loss += self.basis.regularization(e)
-                
                 b_reg.append(float(b_loss.detach().cpu()))
 
                 self.basis.optimizer.zero_grad()
@@ -78,7 +77,6 @@ class LocalTrainer:
             b_losses = np.mean(b_losses) if len(b_losses) else 0
             b_reg = np.mean(b_reg) if len(b_reg) else 0
 
-        
-            print("Continuous GL(n) \n", self.basis.normalized_continuous().data)
+            print("Discovered Basis \n", self.basis.summary())
             print("Epoch", e, "Predictor loss", p_losses, "Basis loss", b_losses, "Basis reg", b_reg)
 

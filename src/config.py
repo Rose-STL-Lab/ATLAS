@@ -1,18 +1,13 @@
-DEBUG = True
+import sys
+import argparse
+from utils import get_device
 
-# if true, no discrete generators will be searched for
-ONLY_IDENTITY_COMPONENT = True
+class Config:
+    def __init__(self):
+        parser = argparse.ArgumentParser()
+        parser.add_argument('--standard_basis', default=False, action='store_true')
+        args = parser.parse_args()
 
-# how much we enforce that the \mu(g*x) = \mu(x) (without this, there may be no relation between \mu(gx) and \mu(x))
-INVARIANCE_LOSS_COEFF = 3
-
-# regularization that discovered group is not just the identity
-IDENTITY_COLLAPSE_REGULARIZATION = 0.1
-
-# Type of Test
-EXPERIMENT_TYPE = "toptagging"
-# EXPERIMENT_TYPE = "norm"
-
-# boolean for CUDA
-DISABLE_CUDA = False
+        self.standard_basis = args.standard_basis
+        self.device = get_device()
 

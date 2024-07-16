@@ -1,43 +1,61 @@
 import torch
 import torch.nn as nn
+import sys
 import numpy as np
 
-import config
-from utils import get_device
+from utils import get_device, rmse
 device = get_device()
 
-
 class GroupBasis(nn.Module):
+<<<<<<< HEAD
     def __init__(self, input_dim, transformer, num_basis, num_cosets, lr=5e-4, coeff_epsilon=1e-1, dtype=torch.float32):
+=======
+    def __init__(self, input_dim, transformer, num_basis, standard_basis, loss_type='rmse', lr=5e-4, reg_fac=0.05, invar_fac=3, coeff_epsilon=1e-1, dtype=torch.float32):
+>>>>>>> generalized_transform
         super().__init__()
-      
-        self.input_dim = input_dim
+    
         self.transformer = transformer
+<<<<<<< HEAD
         self.coeff_epsilon = coeff_epsilon
         self.num_basis = num_basis
+=======
+        self.input_dim = input_dim
+        self.num_basis = num_basis
+        self.coeff_epsilon = coeff_epsilon
+        self.dtype = dtype
+        self.invar_fac = invar_fac
+        self.reg_fac = reg_fac
+        self.loss_type = loss_type
+        self.standard_basis = standard_basis
+>>>>>>> generalized_transform
 
-        # lie elements
-        self.continuous = nn.Parameter(torch.empty((num_basis, input_dim, input_dim), dtype=dtype).to(device))
-        # normal matrices
-        self.discrete = nn.Parameter(torch.empty((num_cosets, input_dim, input_dim), dtype=dtype).to(device))
-
-        for tensor in [
-            self.discrete,
-            self.continuous,
-        ]:
-            nn.init.normal_(tensor, 0, 0.02)
+        self.lie_basis = nn.Parameter(torch.empty((num_basis, input_dim, input_dim), dtype=dtype).to(device))
+        nn.init.normal_(self.lie_basis, 0, 0.02)
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
+    
+    def summary(self):
+        return self.normalize_basis(self.lie_basis).data 
 
-    def input_dimension(self):
-        return self.input_dim
+    def normalize_basis(self, tensor):
+        trace = torch.abs(torch.einsum('kdf,kdf->k', tensor, tensor))
+        factor = torch.sqrt(trace / tensor.shape[1]) + 1e-6
+        return tensor / factor.unsqueeze(-1).unsqueeze(-1)
 
+<<<<<<< HEAD
     def similarity_loss(self, e, x):
+=======
+    def similarity_loss(self, x):
+>>>>>>> generalized_transform
         if len(x) <= 1:
             return 0
 
         def derangement(n):
+<<<<<<< HEAD
             """
+=======
+            """ 
+>>>>>>> generalized_transform
                 generates random derangement (not uniformly, just cycles)
             """
 
@@ -45,6 +63,7 @@ class GroupBasis(nn.Module):
             return torch.roll(perm, (1 + np.random.randint(n - 1)))
 
         xp = x[derangement(len(x))]
+<<<<<<< HEAD
         denom = torch.sum(torch.real(x * torch.conj(x)), dim=(-2, -1))
 
         """
@@ -65,9 +84,27 @@ class GroupBasis(nn.Module):
         trace = torch.abs(torch.einsum('kdf,kdf->k', self.continuous, self.continuous))
         factor = torch.sqrt(trace / self.continuous.shape[1])
         return factor.unsqueeze(-1).unsqueeze(-1)
+=======
+        denom = torch.sum(torch.real(x * torch.conj(x)), dim=(-2, -1)).unsqueeze(-1).unsqueeze(-1)
 
-    def normalized_continuous(self):
-        return self.continuous / self.normalize_factor()
+        if self.standard_basis:
+            if self.dtype == torch.complex64:
+                return torch.sum((
+                    torch.abs(torch.real(x) * torch.real(xp)) + 
+                    torch.abs(torch.imag(x) * torch.imag(xp))
+                ) / denom)
+            else:
+                return torch.sum(torch.abs(x * xp / denom))
+        else:
+            if self.dtype == torch.complex64:
+                return torch.abs(torch.sum((
+                    torch.real(x) * torch.real(xp) + 
+                    torch.imag(x) * torch.imag(xp)
+                ) / denom))
+            else:
+                return torch.abs(torch.sum(x * xp / denom))
+>>>>>>> generalized_transform
+
 
     def sample_coefficients(self, bs):
         """
@@ -76,34 +113,36 @@ class GroupBasis(nn.Module):
             to be taken only as real numbers.
         """
         num_key_points = self.transformer.num_key_points()
+<<<<<<< HEAD
         return torch.normal(0, self.coeff_epsilon, (bs, num_key_points, self.num_basis)).to(device)
+=======
+        return torch.normal(0, self.coeff_epsilon, (bs, num_key_points, self.num_basis)).to(device) 
+>>>>>>> generalized_transform
 
     def apply(self, x):
         """
-            x is a batched tensor with dimension [bs, *manifold_dims, *input_dims]
+            x is a batched tensor with dimension [bs, *manifold_dims, \sum input_dims]
             For instance, if the manifold is 2d and each vector on the feature field is 3d
             x would look like [bs, manifold_x, manifold_y, vector_index]
         """
         bs = x.shape[0]
 
-        # `continuous` is still in the lie algebra, the feature field is responsible for doing the matrix
-        # exp call
         coeffs = self.sample_coefficients(bs)
-        continuous = torch.sum(self.normalized_continuous() * coeffs.unsqueeze(-1).unsqueeze(-1), dim=-3)
+        
+        norm = self.normalize_basis(self.lie_basis) 
+        sampled = torch.sum(norm * coeffs.unsqueeze(-1).unsqueeze(-1), dim=-3)
 
-        # conceptually, selecting which component of the lie group to use for each member of the batch
-        discrete = self.discrete[torch.randint(self.discrete.shape[0], (bs, )).to(device)]
+        ret = self.transformer.apply_lie(sampled, x)
 
-        if not config.ONLY_IDENTITY_COMPONENT:
-            # train either discrete or continuous in one round
-            if np.random.random() > 0.5:
-                discrete = None
-            else:
-                continuous = None
+        return ret
 
-        # conceptually, this is g * x. The feature field object defines how exactly to apply g
-        return self.transformer.apply(discrete, continuous, x)
+    def loss(self, xx, yy):
+        if self.loss_type == 'rmse':
+            raw = rmse(xx, yy)
+        else:
+            raw = nn.functional.cross_entropy(xx, yy)
 
+<<<<<<< HEAD
     # called by LocalTrainer during training
     def loss(self, ypred, ytrue):
         return nn.functional.cross_entropy(ypred, ytrue)
@@ -113,5 +152,13 @@ class GroupBasis(nn.Module):
         # regularization:
         # aim for as 'orthogonal' as possible basis matrices
         r1 = self.similarity_loss(e, self.normalized_continuous())
+=======
+        return raw * self.invar_fac
 
-        return r1 * config.IDENTITY_COLLAPSE_REGULARIZATION
+    # called by LocalTrainer during training
+    def regularization(self, e):
+        # aim for as 'orthogonal' as possible basis matrices and in general avoid identity collapse
+        r1 = self.similarity_loss(self.lie_basis)
+>>>>>>> generalized_transform
+
+        return r1 * self.reg_fac
