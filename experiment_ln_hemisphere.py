@@ -40,17 +40,12 @@ class LnDataset(torch.utils.data.Dataset):
 
 
 if __name__ == '__main__':
-    epochs = 30
-    N = 10000
-    bs = 64
-
     config = Config()
     predictor = LnPredictor()
     transformer = TorusFFTransformer(DIM_SIZE, DIM_SIZE, 4, 4)
     basis = GroupBasis(VECTOR_DIM, transformer, 5, config.standard_basis, dtype=torch.complex64)
 
-    dataset = LnDataset(N)
-    loader = torch.utils.data.DataLoader(dataset, batch_size=bs, shuffle=True)
+    dataset = LnDataset(config.N)
 
-    gdn = LocalTrainer(predictor, basis)
-    gdn.train(loader, epochs)
+    gdn = LocalTrainer(predictor, basis, dataset, config)
+    gdn.train()

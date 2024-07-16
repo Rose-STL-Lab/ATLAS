@@ -1,10 +1,10 @@
 import torch
 import torch.nn as nn
-from ..utils import get_device
-from ..local_symmetry import Predictor, LocalTrainer
-from ..group_basis import GroupBasis
-from ..ff_transformer import TorusFFTransformer
-from ..config import Config
+from utils import get_device
+from local_symmetry import Predictor, LocalTrainer
+from group_basis import GroupBasis
+from ff_transformer import TorusFFTransformer
+from config import Config
 
 # torus size along each dimension (i.e. 3 -> (3, 3, 3))
 MAN_DIM = 10
@@ -34,10 +34,6 @@ class NormDataset(torch.utils.data.Dataset):
 
 
 if __name__ == '__main__':
-    epochs = 25
-    N = 10000
-    bs = 64
-
     config = Config()
 
     predictor = NormPredictor()
@@ -46,9 +42,8 @@ if __name__ == '__main__':
     transformer = TorusFFTransformer(MAN_DIM, MAN_DIM, 5, 5)
     basis = GroupBasis(VECTOR_DIM, transformer, 3, config.standard_basis, lr=5e-4)
 
-    dataset = NormDataset(N)
-    loader = torch.utils.data.DataLoader(dataset, batch_size=bs, shuffle=True)
+    dataset = NormDataset(config.N)
 
-    gdn = LocalTrainer(predictor, basis)   
-    gdn.train(loader, epochs)
+    gdn = LocalTrainer(predictor, basis, dataset, config)   
+    gdn.train()
 

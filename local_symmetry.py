@@ -1,9 +1,6 @@
 import numpy as np
 import torch
-<<<<<<< HEAD
 import torch.nn as nn
-=======
->>>>>>> generalized_transform
 import tqdm
 from abc import ABC, abstractmethod
 
@@ -26,7 +23,7 @@ class Predictor(ABC):
 
 
 class LocalTrainer:
-    def __init__(self, predictor, basis, debug=True):
+    def __init__(self, predictor, basis, dataset, config, debug=True):
         """
             predictor: local_symmetry.py/Predictor
                 This corresponds to xi in the proposal 
@@ -35,17 +32,21 @@ class LocalTrainer:
         """
         self.predictor = predictor
         self.basis = basis
+        self.dataset = dataset
+        self.config = config
        
         if debug:
             torch.autograd.set_detect_anomaly(True)
             torch.set_printoptions(precision=9, sci_mode=False)
 
-    def train(self, xxyy, epochs):
-        for e in range(epochs):
+    def train(self):
+        loader = torch.utils.data.DataLoader(self.dataset, batch_size=self.config.batch_size, shuffle=True)
+
+        for e in range(self.config.epochs):
             # train predictor
             p_losses = []
             if self.predictor.needs_training():
-                for xx, yy in tqdm.tqdm(xxyy):
+                for xx, yy in tqdm.tqdm(loader):
                     y_pred = self.predictor(xx)
 
                     p_loss = torch.nn.functional.cross_entropy(y_pred, yy)
@@ -61,7 +62,7 @@ class LocalTrainer:
             # train basis
             b_losses = []
             b_reg = []
-            for xx, yy in tqdm.tqdm(xxyy):
+            for xx, yy in tqdm.tqdm(loader):
                 xp = self.basis.apply(xx)
                 model_prediction = self.predictor.run(xp)
 

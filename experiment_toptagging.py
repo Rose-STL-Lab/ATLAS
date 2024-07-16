@@ -61,9 +61,6 @@ class TopTagging(torch.utils.data.Dataset):
 
 
 if __name__ == '__main__':
-    epochs = 125
-    bs = 64
-
     n_dim = 4
     n_component = 30
     n_class = 2
@@ -77,8 +74,7 @@ if __name__ == '__main__':
     basis = GroupBasis(4, transformer, 7, config.standard_basis, loss_type='cross_entropy')
 
     dataset = TopTagging(n_component=n_component)
-    loader = torch.utils.data.DataLoader(dataset, batch_size=bs, shuffle=True)
 
-    gdn = LocalTrainer(predictor, basis)
-    gdn.train(loader, epochs)
+    gdn = LocalTrainer(predictor, basis, dataset, config)
+    gdn.train()
 
