@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from utils import get_device
 from local_symmetry import Predictor, LocalTrainer
-from group_basis import GroupBasis 
+from group_basis import GroupBasis, TrivialHomomorphism
 from ff_transformer import TorusFFTransformer
 from config import Config
 
@@ -19,7 +19,7 @@ class LnPredictor(Predictor):
         top = torch.sum(log[..., DIM_SIZE // 2:], dim=[-2, -1])
         bot = torch.sum(log[..., :DIM_SIZE // 2], dim=[-2, -1])
 
-        return (top - bot) / (x.shape[-3] * x.shape[-2]) 
+        return ((top - bot) / (x.shape[-3] * x.shape[-2])).unsqueeze(-1)
 
     def needs_training(self):
         return False
@@ -43,7 +43,8 @@ if __name__ == '__main__':
     config = Config()
     predictor = LnPredictor()
     transformer = TorusFFTransformer(DIM_SIZE, DIM_SIZE, 4, 4)
-    basis = GroupBasis(VECTOR_DIM, transformer, 5, config.standard_basis, dtype=torch.complex64)
+    homomorphism = TrivialHomomorphism([1], 1)
+    basis = GroupBasis(VECTOR_DIM, transformer, homomorphism, 5, config.standard_basis, dtype=torch.complex64)
 
     dataset = LnDataset(config.N)
 

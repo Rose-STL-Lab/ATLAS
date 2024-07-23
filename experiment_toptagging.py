@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from utils import get_device 
 from local_symmetry import Predictor, LocalTrainer
-from group_basis import GroupBasis
+from group_basis import GroupBasis, TrivialHomomorphism
 from ff_transformer import SingletonFFTransformer
 from config import Config
 
@@ -31,11 +31,11 @@ class ClassPredictor(Predictor):
         return self.run(x)
 
     def run(self, x):
-        ret = self.model(x.reshape(-1, self.n_dim * self.n_components).to(device))
-        return ret
+        # unsqueeze is bc homomorphism assumes at least one manifold dimension
+        return self.model(x.reshape(-1, self.n_dim * self.n_components)).unsqueeze(-1)
 
-    def loss(self, xx, yy):
-        return nn.functional.cross_entropy(xx, yy)
+    def loss(self, y_pred, y_true):
+        return nn.functional.cross_entropy(y_pred.squeeze(-1), y_true.squeeze(-1))
 
     def needs_training(self):
         return True
@@ -51,7 +51,7 @@ class TopTagging(torch.utils.data.Dataset):
             self.X = self.X.reshape(-1, n_component, 4)
         self.len = self.X.shape[0]
         
-        self.y = torch.LongTensor(df[:, -1]).to(device)
+        self.y = torch.LongTensor(df[:, -1]).unsqueeze(-1).to(device)
 
     def __len__(self):
         return self.len
@@ -71,7 +71,8 @@ if __name__ == '__main__':
     predictor = ClassPredictor(n_dim, n_component, n_class)
 
     transformer = SingletonFFTransformer((n_component, ))
-    basis = GroupBasis(4, transformer, 7, config.standard_basis, loss_type='cross_entropy')
+    homomorphism = TrivialHomomorphism([1], 1)
+    basis = GroupBasis(4, transformer, homomorphism, 7, config.standard_basis, loss_type='cross_entropy')
 
     dataset = TopTagging(n_component=n_component)
 

@@ -49,7 +49,7 @@ class LocalTrainer:
                 for xx, yy in tqdm.tqdm(loader):
                     y_pred = self.predictor(xx)
 
-                    p_loss = torch.nn.functional.cross_entropy(y_pred, yy)
+                    p_loss = self.predictor.loss(y_pred, yy)
                     p_losses.append(float(p_loss.detach().cpu()))
 
                     self.predictor.optimizer.zero_grad()
@@ -63,10 +63,10 @@ class LocalTrainer:
             b_losses = []
             b_reg = []
             for xx, yy in tqdm.tqdm(loader):
-                xp = self.basis.apply(xx)
+                xp, yp = self.basis.apply(xx, yy)
                 model_prediction = self.predictor.run(xp)
 
-                b_loss = self.basis.loss(model_prediction, yy) 
+                b_loss = self.basis.loss(model_prediction, yp) 
                 b_losses.append(float(b_loss.detach().cpu()))
 
                 b_loss += self.basis.regularization(e)

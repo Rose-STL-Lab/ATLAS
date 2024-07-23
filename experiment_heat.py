@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from utils import get_device
 from local_symmetry import Predictor, LocalTrainer
-from group_basis import GroupBasis
+from group_basis import GroupBasis, Homomorphism
 from ff_transformer import R1FFTransformer
 from config import Config
 
@@ -27,29 +27,61 @@ def step(x, dt, alpha=2, beta=1):
     dudt = alpha * d2udx + beta * d2vdx
     dvdt = alpha * d2vdx + beta * d2udx
 
-    return torch.cat((x[..., 0] + dudt * dt, x[..., 1] + dvdt * dt), dim=-1)
+    return torch.stack((x[..., 0] + dudt * dt, x[..., 1] + dvdt * dt), dim=-1)
 
-class HeatPredictor(Predictor):
+class HeatPredictor(nn.Module, Predictor):
+    def __init__(self):
+        super().__init__()
+
+        self.model = nn.Sequential(
+            nn.Linear(2 * LINE_LEN, 256),
+            nn.ReLU(),
+            nn.Linear(256, 256),
+            nn.ReLU(),
+            nn.Linear(256, 256),
+            nn.ReLU(),
+            nn.Linear(256, 2 * LINE_LEN),
+        )
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
+
     def run(self, x):
-        return step(x, 0.1)
+        return self.model(torch.flatten(x, start_dim=-2)).reshape(x.shape)
+
+    def forward(self, x):
+        return self.model(torch.flatten(x, start_dim=-2)).reshape(x.shape)
 
     def needs_training(self):
-        return False
+        return True
 
+class HeatHomomorphism(nn.Module, Homomorphism):
+    def __init__(self):
+        super().__init__()
+        self.model = nn.Sequential(
+            nn.Linear(4 * LINE_LEN, 512),
+            nn.ReLU(),
+            nn.Linear(512, 512),
+            nn.ReLU(),
+            nn.Linear(512, 512),
+            nn.ReLU(),
+            nn.Linear(512, 4 * LINE_LEN),
+        )
+
+    def forward(self, x):
+        return self.model(torch.flatten(x, start_dim=-3)).reshape(x.shape)
 
 class HeatDataset(torch.utils.data.Dataset):
     def __init__(self, N): 
         self.N = N
-        lerp = R1FFTransformer(LINE_LEN, LINE_KEY)
+        lerp = R1FFTransformer(LINE_LEN, 6)
 
-        key = torch.normal(0, 1, (N, LINE_KEY, 2))
+        key = torch.normal(0, 2, (N, 6, 2))
         self.tensor = lerp.smooth_function(key)
 
     def __len__(self):
         return self.N
 
     def __getitem__(self, index):
-        return self.tensor[index], HeatPredictor().run((self.tensor[index]))
+        return self.tensor[index], step(self.tensor[index], 0.2)
 
 
 if __name__ == '__main__':
@@ -57,7 +89,8 @@ if __name__ == '__main__':
 
     predictor = HeatPredictor()
     transformer = R1FFTransformer(LINE_LEN, LINE_KEY)
-    basis = GroupBasis(2, transformer, 3, config.standard_basis, lr=5e-4)
+    homomorphism = HeatHomomorphism()
+    basis = GroupBasis(2, transformer, homomorphism, 1, config.standard_basis, lr=5e-4)
     dataset = HeatDataset(config.N)
 
     gdn = LocalTrainer(predictor, basis, dataset, config)   
