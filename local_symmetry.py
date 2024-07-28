@@ -69,8 +69,9 @@ class LocalTrainer:
                 b_loss = self.basis.loss(model_prediction, yp) 
                 b_losses.append(float(b_loss.detach().cpu()))
 
-                b_loss += self.basis.regularization(e)
-                b_reg.append(float(b_loss.detach().cpu()))
+                reg = self.basis.regularization(e)
+                b_loss += reg
+                b_reg.append(float(reg))
 
                 self.basis.optimizer.zero_grad()
                 b_loss.backward()

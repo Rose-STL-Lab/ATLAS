@@ -48,6 +48,26 @@ class FFTransformer(ABC):
 
         return (matrices @ feature_field.unsqueeze(-1)).squeeze(-1)
 
+class S1FFTransformer(FFTransformer):
+    def __init__(self, u_dim, u_keypoints):
+        assert u_dim % u_keypoints == 0
+
+        blend_key = torch.zeros((u_dim, 2), dtype=torch.int).to(device)
+        blend_val = torch.zeros((u_dim, 2)).to(device)
+
+        for u in range(u_dim):
+            u0 = u * u_keypoints // u_dim
+            u1 = (u0 + 1) % u_keypoints
+
+            s = (u - (u0 * u_dim // u_keypoints)) / (u_dim // u_keypoints)
+
+            blend_key[u, 0] = u0 
+            blend_key[u, 1] = u1 
+            blend_val[u, 0] = (1 - s)
+            blend_val[u, 1] = s 
+        
+        super().__init__(blend_key, blend_val)
+
 
 class TorusFFTransformer(FFTransformer):
     def __init__(self, u_dim, v_dim, u_keypoints, v_keypoints):
@@ -80,11 +100,6 @@ class TorusFFTransformer(FFTransformer):
         
         super().__init__(blend_key, blend_val)
 
-class SingletonFFTransformer(FFTransformer):
-    def __init__(self, manifold_size):
-        key = torch.zeros((*manifold_size, 1), device=device, dtype=torch.long)
-        val = torch.ones((*manifold_size, 1), device=device)
-        super().__init__(key, val)
 
 class R1FFTransformer(FFTransformer):
     def __init__(self, dim, kdim):
@@ -158,6 +173,12 @@ class R4BilinearFFTransformer(FFTransformer):
 
         return torch.cat((grad_x, grad_y, grad_z, grad_t), dim=-1)
         
+class SingletonFFTransformer(FFTransformer):
+    def __init__(self, manifold_size):
+        key = torch.zeros((*manifold_size, 1), device=device, dtype=torch.long)
+        val = torch.ones((*manifold_size, 1), device=device)
+        super().__init__(key, val)
+
 """
 def r3_blending_matrix(ff_shape, subdivisions):
     num_segments = 2 ** subdivisions
