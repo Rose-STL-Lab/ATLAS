@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-
+import torch.distributed as dist
 
 def rmse(xx, yy):
     return torch.sqrt(torch.mean(torch.square(xx - yy)))
@@ -73,3 +73,13 @@ def affine_coord(tensor, dummy_pos=None):
         return tensor / tensor[..., dummy_pos].unsqueeze(-1)
     else:
         return tensor
+
+def sum_reduce(num, device):
+    r''' Sum the tensor across the devices.
+    '''
+    if not torch.is_tensor(num):
+        rt = torch.tensor(num).to(device)
+    else:
+        rt = num.clone()
+    dist.all_reduce(rt, op=dist.ReduceOp.SUM)
+    return rt
