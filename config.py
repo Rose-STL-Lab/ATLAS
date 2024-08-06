@@ -15,6 +15,7 @@ class Config:
         parser.add_argument('--dropout', type=float, default=0.2)
         parser.add_argument('--c_weight', type=float, default=0.005)
         parser.add_argument('--weight_decay', type=float, default=0.01)
+        parser.add_argument('--log_interval', type=int, default=50)
         args = parser.parse_args()
 
         self.standard_basis = args.standard_basis
@@ -27,5 +28,6 @@ class Config:
         self.dropout = args.dropout
         self.c_weight = args.c_weight
         self.weight_decay = args.weight_decay
+        self.log_interval = args.log_interval
         self.device = get_device()
 

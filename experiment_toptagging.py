@@ -81,7 +81,7 @@ def run(e, loader, partition):
     res = {'time':0, 'correct':0, 'loss': 0, 'counter': 0, 'acc': 0,
            'loss_arr':[], 'correct_arr':[],'label':[],'score':[]}
 
-    for i, data in enumerate(loader):
+    for i, data in enumerate(dataloaders['train']):
         batch_size, n_nodes, _ = data['Pmu'].size()
 
         if partition == "predictor":
@@ -138,13 +138,14 @@ def run(e, loader, partition):
         tmp_counter = sum_reduce(res['counter'], device = device)
         tmp_loss = sum_reduce(res['loss'], device = device) / tmp_counter
         tmp_acc = sum_reduce(res['correct'], device = device) / tmp_counter
-
-        if partition == "predictor":
-            print(">> Predictor: \t Epoch %d/%d \t Batch %d/%d \t Loss %.4f \t Running Acc %.3f \t Total Acc %.3f \t Avg Batch Time %.4f" %
-                (e + 1, config.epochs, i, loader_length, running_loss, running_acc, tmp_acc, avg_time))
-        else:
-            print(">> Basis: \t Epoch %d/%d \t Batch %d/%d \t Loss %.4f \t Running Acc %.3f \t Total Acc %.3f \t Avg Batch Time %.4f" %
-                (e + 1, config.epochs, i, loader_length, running_loss, running_acc, tmp_acc, avg_time))
+        
+        if i % config.log_interval == 0:
+            if partition == "predictor":
+                print(">> Predictor: \t Epoch %d/%d \t Batch %d/%d \t Loss %.4f \t Running Acc %.3f \t Total Acc %.3f \t Avg Batch Time %.4f" %
+                    (e + 1, config.epochs, i, loader_length, running_loss, running_acc, tmp_acc, avg_time))
+            else:
+                print(">> Basis: \t Epoch %d/%d \t Batch %d/%d \t Loss %.4f \t Running Acc %.3f \t Total Acc %.3f \t Avg Batch Time %.4f" %
+                    (e + 1, config.epochs, i, loader_length, running_loss, running_acc, tmp_acc, avg_time))
 
     res['counter'] = sum_reduce(res['counter'], device = device).item()
     res['loss'] = sum_reduce(res['loss'], device = device).item() / res['counter']
@@ -152,16 +153,11 @@ def run(e, loader, partition):
     print("Time: train: %.2f \t Train loss %.4f \t Train acc: %.4f" % (res['time'],res['loss'],res['acc']))
 
     if partition == "predictor":
-        torch.save(ddp_model.state_dict(), f"./src/models/gnn/predictor/checkpoint-epoch-{e}.pt")
-    else:
-        torch.save(basis.state_dict(), f"./src/models/gnn/basis/checkpoint-epoch-{e}.pt")
+        torch.save(ddp_model.state_dict(), f"./models/predictor/checkpoint-epoch-{e}.pt")
     
     return 
 
 def train():
-    #best_model = torch.load(f"./src/models/gnn/predictor/checkpoint-epoch-0.pt")
-    #ddp_model.load_state_dict(best_model)
-    
     for e in range(0, config.epochs):
         #train predictor
         run(e, dataloaders['train'], "predictor")
@@ -177,7 +173,7 @@ if __name__ == '__main__':
 
     config = Config()
 
-    dist.init_process_group(backend='gloo') 
+    dist.init_process_group(backend='nccl') 
     train_sampler, dataloaders = dataset.retrieve_dataloaders(
                                     config.batch_size,
                                     1,
@@ -185,18 +181,21 @@ if __name__ == '__main__':
                                     datadir="./data/top-tagging-converted",
                                     nobj = config.n_component)
 
-    predictor = LorentzNet(n_scalar = 2, n_hidden = config.n_hidden, n_class = n_class,
+    predictor = LorentzNet(n_scalar = 1, n_hidden = config.n_hidden, n_class = n_class,
                        dropout = config.dropout, n_layers = config.n_layers,
                        c_weight = config.c_weight)
     predictor = torch.nn.SyncBatchNorm.convert_sync_batchnorm(predictor)
     predictor = predictor.to(device)
     ddp_model = DistributedDataParallel(predictor, device_ids=[0])
 
-    ### predictor optimizer
+    ## load best model if needed
+    best_model = torch.load(f"./models/predictor/checkpoint-epoch-0.pt")
+    ddp_model.load_state_dict(best_model)
+
+    ## predictor optimizer
     optimizer = optim.AdamW(ddp_model.parameters(), lr=0.0003, weight_decay=config.weight_decay)
     
-    ## +2 to account for added beams
-    transformer = SingletonFFTransformer((config.n_component+2, ))
+    transformer = SingletonFFTransformer((config.n_component, ))
     homomorphism = TrivialHomomorphism([1], 1)
     basis = GroupBasis(4, transformer, homomorphism, 7, config.standard_basis, loss_type='cross_entropy')
 

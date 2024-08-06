@@ -8,8 +8,8 @@ def retrieve_dataloaders(batch_size, num_workers = 4, num_train = -1, datadir = 
     # distributed training
     train_sampler = DistributedSampler(datasets['train'])
     # Construct PyTorch dataloaders from datasets
-    collate_train = lambda data: collate_fn(data, scale=1, nobj=nobj, add_beams=True, beam_mass=1)
-    collate_test = lambda data: collate_fn(data, scale=1, nobj=nobj, add_beams=True, beam_mass=1)
+    collate_train = lambda data: collate_fn(data, scale=1, nobj=nobj, add_beams=False, beam_mass=1)
+    collate_test = lambda data: collate_fn(data, scale=1, nobj=nobj, add_beams=False, beam_mass=1)
     dataloaders = {split: DataLoader(dataset,
                                      batch_size=batch_size if (split == 'train') else batch_size, # prevent CUDA memory exceeded
                                      sampler=train_sampler if (split == 'train') else DistributedSampler(dataset, shuffle=False),
