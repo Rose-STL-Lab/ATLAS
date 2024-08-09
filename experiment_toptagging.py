@@ -5,7 +5,7 @@ from torch import nn, optim
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
 import os
-import argparse, json, time
+import time
 import pandas as pd
 import numpy as np
 from utils import get_device, sum_reduce
@@ -13,8 +13,7 @@ from local_symmetry import Predictor, LocalTrainer
 from group_basis import GroupBasis, TrivialHomomorphism
 from ff_transformer import SingletonFFTransformer
 from config import Config
-from gnn import LorentzNet, psi
-from top import dataset
+from top import dataset, gnn
 
 
 os.environ['MASTER_ADDR'] = 'localhost'
@@ -98,7 +97,7 @@ def run(e, loader, partition):
         atom_mask = data['atom_mask'].reshape(batch_size * n_nodes, -1).to(device)
         edge_mask = data['edge_mask'].reshape(batch_size * n_nodes * n_nodes, -1).to(device)
         nodes = data['nodes'].view(batch_size * n_nodes, -1).to(device,dtype)
-        nodes = psi(nodes)
+        nodes = gnn.psi(nodes)
         edges = [a.to(device) for a in data['edges']]
         label = data['is_signal'].to(device, dtype).long()
         
@@ -181,7 +180,7 @@ if __name__ == '__main__':
                                     datadir="./data/top-tagging-converted",
                                     nobj = config.n_component)
 
-    predictor = LorentzNet(n_scalar = 1, n_hidden = config.n_hidden, n_class = n_class,
+    predictor = gnn.LorentzNet(n_scalar = 1, n_hidden = config.n_hidden, n_class = n_class,
                        dropout = config.dropout, n_layers = config.n_layers,
                        c_weight = config.c_weight)
     predictor = torch.nn.SyncBatchNorm.convert_sync_batchnorm(predictor)

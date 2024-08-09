@@ -1,4 +1,9 @@
-torch==2.1.1
-numpy==1.26.2
-tqdm==4.66.4
+h5py==3.10.0
+numpy==2.0.1
 pandas==2.2.2
+scikit_learn==1.5.1
+scipy==1.14.0
+torch==2.2.1+cu121
+torchvision==0.17.1+cu121
+tqdm==4.66.2
+wandb==0.17.5
