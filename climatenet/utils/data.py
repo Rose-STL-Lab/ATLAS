@@ -87,15 +87,15 @@ class ClimateNeighborDataset(ClimateDataset):
         Number of charts in the atlas
     '''
 
-    def __init__(self, path: str, config: Config, chart_size, num_chart):
+    def __init__(self, path: str, fields, chart_size, num_chart):
         self.path: str = path
-        self.fields: dict = config.fields
+        self.fields: dict = fields
         
         self.files: [str] = [f for f in sorted(listdir(self.path)) if f[-3:] == ".nc"]
         self.length: int = len(self.files)
         self.chart_size = chart_size
         self.num_chart = num_chart
-        self.charts = self.generate_charts(chart_size, num_chart)
+        self.charts = self.generate_charts(self.chart_size, self.num_chart)
 
     def generate_charts(self, chart_size, num_chart):
         pairs = []
@@ -119,12 +119,21 @@ class ClimateNeighborDataset(ClimateDataset):
             for j, (r,c) in enumerate(self.charts):
                 new_features[0, i, j] = variable[r:r+self.chart_size, c:c+self.chart_size].values
 
+        time = features['time'].values
+        variables = features['variable'].values
+        chart = list(range(self.num_chart))
+        temp_lat = temp_lon = list(range(self.chart_size))
+        atlas_feature = xr.DataArray(new_features, coords=[time, variables, chart, temp_lat, temp_lon], dims=['time', 'variable', 'chart', 'lat', 'lon'])
+
         # size of (number of charts, chart_size, chart_size)
         new_labels = []
         for (r,c) in self.charts:
             new_labels.append(labels[r:r+self.chart_size, c:c+self.chart_size].values)
+            #new_labels.append(labels.values)
 
-        return new_features, new_labels
+        atlas_label = xr.DataArray(new_labels, coords=[chart, temp_lat, temp_lon], dims=['chart', 'lat', 'lon'])
+
+        return atlas_feature, atlas_label
 
     # Return an array of charts
     def __getitem__(self, idx: int):
@@ -132,6 +141,7 @@ class ClimateNeighborDataset(ClimateDataset):
         dataset = xr.load_dataset(file_path)
         return self.get_features(dataset, dataset['LABELS'])
 
+    @staticmethod 
     def collate(batch):
         data, labels = map(list, zip(*batch))
         return xr.concat(data, dim='time'), xr.concat(labels, dim='time')
