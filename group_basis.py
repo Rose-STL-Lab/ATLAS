@@ -3,67 +3,69 @@ import torch.nn as nn
 import sys
 import numpy as np
 
-from utils import get_device, rmse
+from utils import get_device, rmse, transform_atlas
 device = get_device()
 
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
+
 class GroupBasis(nn.Module):
-    def __init__(self, input_dim, transformer, num_basis, standard_basis, loss_type='rmse', lr=5e-4, reg_fac=0.05, invar_fac=3, coeff_epsilon=1e-1, dtype=torch.float32):
+    def __init__(
+            self, in_dim, man_dim, out_dim, num_basis, standard_basis, 
+            loss_type='rmse', in_rad=10, out_rad=5, lr=5e-4, reg_fac=1, 
+            identity_in_rep=False, identity_out_rep=False,
+            dtype=torch.float32,
+        ):
         super().__init__()
     
-        self.transformer = transformer
-        self.input_dim = input_dim
+        self.in_dim = in_dim
+        self.man_dim = man_dim
+        self.out_dim = out_dim
+
+        self.in_rad = in_rad
+        self.out_rad = out_rad
+
+        self.identity_in_rep = identity_in_rep
+        self.identity_out_rep = identity_out_rep
+
         self.num_basis = num_basis
-        self.coeff_epsilon = coeff_epsilon
         self.dtype = dtype
-        self.invar_fac = invar_fac
         self.reg_fac = reg_fac
         self.loss_type = loss_type
         self.standard_basis = standard_basis
 
-        self.lie_basis = nn.Parameter(torch.empty((num_basis, input_dim, input_dim), dtype=dtype).to(device))
-        nn.init.normal_(self.lie_basis, 0, 0.02)
+        self.lie_basis = nn.Parameter(torch.empty((num_basis, man_dim, man_dim), dtype=dtype).to(device))
+        self.in_basis = nn.Parameter(torch.empty((num_basis, in_dim, in_dim), dtype=dtype).to(device))
+        self.out_basis = nn.Parameter(torch.empty((num_basis, out_dim, out_dim), dtype=dtype).to(device))
+
+        for tensor in [self.lie_basis, self.in_basis, self.out_basis]:
+            nn.init.normal_(tensor, 0, 0.02)
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
     
     def summary(self):
-        return self.normalize_basis(self.lie_basis).data 
+        ret = []
+        if not self.identity_in_rep:
+            ret.append(self.in_basis.data)
+        ret.append(self.lie_basis.data)
+        if not self.identity_out_rep:
+            ret.append(self.in_basis.data)
 
-    def normalize_basis(self, tensor):
-        trace = torch.abs(torch.einsum('kdf,kdf->k', tensor, tensor))
-        factor = torch.sqrt(trace / tensor.shape[1]) + 1e-6
-        return tensor / factor.unsqueeze(-1).unsqueeze(-1)
+        return ret
 
     def similarity_loss(self, x):
         if len(x) <= 1:
             return 0
-
-        def derangement(n):
-            """ 
-                generates random derangement (not uniformly, just cycles)
-            """
-
-            perm = torch.tensor(list(range(n))).to(device)
-            return torch.roll(perm, (1 + np.random.randint(n - 1)))
-
-        xp = x[derangement(len(x))]
-        denom = torch.sum(torch.real(x * torch.conj(x)), dim=(-2, -1)).unsqueeze(-1).unsqueeze(-1)
+    
+        # from lie gan
+        trace = torch.einsum('kdf,kdf->k', x, x)
+        factor = torch.sqrt(trace / x.shape[1])
+        x = x / factor
 
         if self.standard_basis:
-            if self.dtype == torch.complex64:
-                return torch.sum((
-                    torch.abs(torch.real(x) * torch.real(xp)) + 
-                    torch.abs(torch.imag(x) * torch.imag(xp))
-                ) / denom)
-            else:
-                return torch.sum(torch.abs(x * xp / denom))
-        else:
-            if self.dtype == torch.complex64:
-                return torch.abs(torch.sum((
-                    torch.real(x) * torch.real(xp) + 
-                    torch.imag(x) * torch.imag(xp)
-                ) / denom))
-            else:
-                return torch.abs(torch.sum(x * xp / denom))
+            x = torch.abs(x)
+
+        return torch.sum(torch.abs(torch.triu(torch.einsum('bij,cij->bc', x, x), diagonal=1)))
 
 
     def sample_coefficients(self, bs):
@@ -72,36 +74,50 @@ class GroupBasis(nn.Module):
             our goal is still only to find the real Lie groups so that the sampled coefficients are
             to be taken only as real numbers.
         """
-        num_key_points = self.transformer.num_key_points()
-        return torch.normal(0, self.coeff_epsilon, (bs, num_key_points, self.num_basis)).to(device) 
+        return torch.normal(0, 1, (*bs, self.num_basis)).to(device) 
 
-    def apply(self, x):
-        """
-            x is a batched tensor with dimension [bs, *manifold_dims, \sum input_dims]
-            For instance, if the manifold is 2d and each vector on the feature field is 3d
-            x would look like [bs, manifold_x, manifold_y, vector_index]
-        """
-        bs = x.shape[0]
+    def step(self, x, y, pred):
+        bs = x.batch_size()
 
-        coeffs = self.sample_coefficients(bs)
-        
-        norm = self.normalize_basis(self.lie_basis) 
-        sampled = torch.sum(norm * coeffs.unsqueeze(-1).unsqueeze(-1), dim=-3)
+        coeffs = self.sample_coefficients((bs, x.num_charts()))
 
-        ret = self.transformer.apply_lie(sampled, x)
+        def sample(raw):
+            return torch.matrix_exp(torch.sum(raw * coeffs.unsqueeze(-1).unsqueeze(-1), dim=-3))
+       
+        sampled_lie = sample(self.lie_basis) 
+        sampled_in =  sample(self.in_basis) 
+        sampled_out = sample(self.out_basis)
 
-        return ret
+        if self.identity_in_rep:
+            sampled_in = torch.eye(self.in_dim, device=device).unsqueeze(0).unsqueeze(0).repeat(bs, x.num_charts(), 1, 1)
 
-    def loss(self, xx, yy):
+        if self.identity_out_rep:
+            sampled_out = torch.eye(self.out_dim, device=device).unsqueeze(0).unsqueeze(0).repeat(bs, x.num_charts(), 1, 1)
+
+        x_atlas = x.regions(self.in_rad)
+        g_x_atlas = transform_atlas(sampled_lie, sampled_in, x_atlas)
+
+        y_atlas = y.regions(self.out_rad)
+        g_y_atlas = transform_atlas(sampled_lie, sampled_out, y_atlas)
+
+        y_atlas_true = pred.run(g_x_atlas)
+
         if self.loss_type == 'rmse':
-            raw = rmse(xx, yy)
+            raw = rmse(g_y_atlas, y_atlas_true)
         else:
-            raw = nn.functional.cross_entropy(xx, yy)
-        return raw * self.invar_fac
+            g_y_atlas = g_y_atlas.permute(0, 1, 3, 4, 2).flatten(0, 3)
+            y_atlas_true = y_atlas_true.permute(0, 1, 3, 4, 2).flatten(0, 3)
+            raw = torch.nn.functional.cross_entropy(y_atlas_true, g_y_atlas)
+
+        return raw
 
     # called by LocalTrainer during training
     def regularization(self, e):
         # aim for as 'orthogonal' as possible basis matrices and in general avoid identity collapse
         r1 = self.similarity_loss(self.lie_basis)
+        # penalize small basis vectors
+        trace = torch.einsum('kdf,kdf->k', self.lie_basis, self.lie_basis)
+        factor = torch.sqrt(trace / self.lie_basis.shape[1])
+        r2 = -torch.sum(factor)
 
-        return r1 * self.reg_fac
+        return (0.05 * r1 + r2) * self.reg_fac
