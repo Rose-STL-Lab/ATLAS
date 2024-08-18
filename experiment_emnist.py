@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
+import escnn
 import escnn.nn as enn
-from utils import get_device
+from utils import get_device, ManifoldPredictor
 from local_symmetry import Predictor, LocalTrainer
 from group_basis import GroupBasis
 from ff import R2FeatureField
@@ -101,57 +102,7 @@ class EMNISTDataset(torch.utils.data.Dataset):
 
         return x.to(device), y_expanded
 
-class StructureGroupPredictor(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.
-        pass
-
-
-class DiscoveredGroupPredictor:
-    def __init__(self):
-        super().__init__()
-
-                self.down = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),
-            nn.LeakyReLU(),
-            nn.BatchNorm2d(32),
-
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
-            nn.LeakyReLU(),
-            nn.BatchNorm2d(64),
-
-            nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
-            nn.LeakyReLU(),
-            nn.BatchNorm2d(64),
-
-            nn.Conv2d(64, 64, kernel_size=3),
-            nn.LeakyReLU(),
-            nn.BatchNorm2d(64),
-        ).to(device)
-
-        self.up = nn.Sequential(
-            nn.ConvTranspose2d(64, 64, kernel_size=3),
-            nn.LeakyReLU(),
-            nn.BatchNorm2d(64),
-
-            nn.ConvTranspose2d(64, 64, kernel_size=3, stride=2, padding=1, output_padding=0),
-            nn.LeakyReLU(),
-            nn.BatchNorm2d(64),
-
-            nn.ConvTranspose2d(64, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.LeakyReLU(),
-            nn.BatchNorm2d(64),
-
-            nn.ConvTranspose2d(64, 32, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.LeakyReLU(),
-            nn.BatchNorm2d(32),
-
-            nn.Conv2d(32, 62, kernel_size=3, padding=1),  
-            nn.LeakyReLU(),
-        ).to(device)
-
-if __name__ == '__main__':
+def discover():
     config = Config()
 
     # predictor = EMNISTPredictor()
@@ -168,3 +119,43 @@ if __name__ == '__main__':
     gdn = LocalTrainer(R2FeatureField, predictor, basis, dataset, config)   
     gdn.train()
 
+def train(act):
+    import tqdm 
+
+    config = Config()
+
+    dataset = EMNISTDataset(config.N)
+    loader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
+
+    model = ManifoldPredictor(act, [
+            1  * [act.trivial_repr],
+            64 * [act.regular_repr],
+            64 * [act.regular_repr],
+            64 * [act.regular_repr],
+            62 * [act.trivial_repr],
+        ], R2FeatureField)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+    for e in range(config.epochs):
+        total_loss = 0
+        for xx, yy in tqdm.tqdm(loader):
+            y_pred = model(xx)
+
+            y_pred = y_pred.permute(0, 2, 3, 1).flatten(0, 2)
+            yy = yy.permute(0, 2, 3, 1).flatten(0, 2)
+            loss = torch.nn.functional.cross_entropy(y_pred, yy)
+
+            total_loss += loss / len(loader)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+        print("Loss", total_loss)
+
+
+if __name__ == '__main__':
+    # discover()
+    train(escnn.gspaces.trivialOnR2())
+    # train(escnn.gspaces.rot2dOnR2(8))

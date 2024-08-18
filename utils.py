@@ -1,4 +1,5 @@
 import torch
+import escnn.nn as enn
 import torch.nn.functional as F
 import numpy as np
 
@@ -130,3 +131,42 @@ def affine_coord(tensor, dummy_pos=None):
         return tensor / tensor[..., dummy_pos].unsqueeze(-1)
     else:
         return tensor
+
+device = get_device()
+class ManifoldLayer(torch.nn.Module):
+    def __init__(self, in_field_type, out_field_type):
+        super().__init__()
+        self.conv = enn.R2Conv(in_field_type, out_field_type, kernel_size=5, stride=5)
+        self.relu = enn.LeakyReLU(out_field_type)
+
+    def forward(self, x):
+        ff_type = type(x)
+
+        x = x.atlas()
+        x = self.conv.in_type(x)
+
+        x = self.conv(x)
+        x = self.relu(x)
+
+        x = ff_type(x.tensor)
+
+        return x
+
+class ManifoldPredictor(torch.nn.Module):
+    def __init__(self, gact, types, ff_type):
+        super().__init__()
+
+        self.ff_type = ff_type
+        layers = []
+        for i, o in zip(types[:-1], types[1:]):
+            layers.append(ManifoldLayer(enn.FieldType(gact, i), enn.FieldType(gact, o)).to(device))
+        self.layers = torch.nn.ModuleList(layers)
+
+    def forward(self, x):
+        x = self.ff_type(x)
+        for layer in self.layers:
+            x = layer(x)
+
+        return x.data
+
+

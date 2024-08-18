@@ -1,3 +1,4 @@
+import torch
 from abc import ABC, abstractmethod
 
 class FeatureField(ABC):
@@ -6,6 +7,9 @@ class FeatureField(ABC):
 
     @abstractmethod
     def atlas(self):
+        '''
+            kernel size of 5
+        '''
         pass
 
     @abstractmethod
@@ -17,7 +21,7 @@ class FeatureField(ABC):
         pass
 
     def num_charts(self):
-        return self.atlas(0).shape[1]
+        return self.regions(0).shape[1]
         
     def batch_size(self):
         return self.data.shape[0]
@@ -31,7 +35,15 @@ class R2FeatureField(FeatureField):
         super().__init__(data)
     
     def atlas(self):
-        return torch.nn.functional.fold(self.data, 5, padding=2)
+        ret = torch.nn.functional.unfold(self.data, (5, 5), padding=2)
+        ret = ret.view(-1, self.data.shape[1], 5, 5, *self.data.shape[2:])
+        ret = ret.permute(0, 1, 4, 2, 5, 3).reshape(-1, self.data.shape[1], 5 * self.data.shape[2], 5 * self.data.shape[3])
+
+        # import matplotlib.pyplot as plt
+        # plt.imshow(ret.detach().cpu().permute(0, 2, 3, 1).numpy()[0])
+        # plt.show()
+
+        return ret
 
     def regions(self, radius):
         mid_r, mid_c = self.data.shape[-2] // 2, self.data.shape[-1] // 2
