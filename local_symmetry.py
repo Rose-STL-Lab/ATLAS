@@ -35,7 +35,8 @@ class LocalTrainer:
             torch.set_printoptions(precision=9, sci_mode=False)
 
     def train(self):
-        loader = torch.utils.data.DataLoader(self.dataset, batch_size=self.config.batch_size, shuffle=True)
+        collate_fn = self.dataset.collate if hasattr(self.dataset, 'collate') else None
+        loader = torch.utils.data.DataLoader(self.dataset, batch_size=self.config.batch_size, collate_fn=collate_fn, shuffle=True)
 
         for e in range(self.config.epochs):
             # train predictor
@@ -56,7 +57,6 @@ class LocalTrainer:
                     p_loss.backward()
                     self.predictor.optimizer.step()
 
-                torch.save(self.predictor, "predictor.pt")
             p_losses = np.mean(p_losses) if len(p_losses) else 0
                 
             # train basis

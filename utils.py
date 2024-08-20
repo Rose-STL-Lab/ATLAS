@@ -19,7 +19,7 @@ def get_device(no_mps=True):
     return torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
 
-def transform_atlas(matrices, ff_matrices, charts):
+def transform_atlas(matrices, ff_matrices, charts, interpolation):
     import matplotlib.pyplot as plt
 
     bs, num_charts, ff_dim, height, width = charts.shape
@@ -42,7 +42,7 @@ def transform_atlas(matrices, ff_matrices, charts):
 
     charts_reshaped = charts.reshape(bs * num_charts, ff_dim, height, width)
 
-    transformed_charts = F.grid_sample(charts_reshaped, transformed_grid, align_corners=True)
+    transformed_charts = F.grid_sample(charts_reshaped, transformed_grid, align_corners=True, padding_mode='border', mode=interpolation)
 
     transformed_charts = torch.einsum('bij,bjhw->bihw', ff_matrices, transformed_charts)
     transformed_charts = transformed_charts.view(bs, num_charts, ff_dim, height, width)

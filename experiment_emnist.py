@@ -109,7 +109,7 @@ def discover():
     predictor = torch.load('predictor.pt')
     
     basis = GroupBasis(
-        1, 2, 62, 2, config.standard_basis, 
+        1, 2, 62, 1, config.standard_basis, 
         loss_type='cross_entropy', lr=5e-4, in_rad=IN_RAD, out_rad=OUT_RAD, 
         identity_out_rep=True, # matrix exp of 62 x 62 matrix generally becomes nan
     )
@@ -156,6 +156,6 @@ def train(act):
 
 
 if __name__ == '__main__':
-    # discover()
-    train(escnn.gspaces.trivialOnR2())
+    discover()
+    # train(escnn.gspaces.trivialOnR2())
     # train(escnn.gspaces.rot2dOnR2(8))

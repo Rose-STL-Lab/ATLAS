@@ -39,17 +39,19 @@ class R2FeatureField(FeatureField):
         ret = ret.view(-1, self.data.shape[1], 5, 5, *self.data.shape[2:])
         ret = ret.permute(0, 1, 4, 2, 5, 3).reshape(-1, self.data.shape[1], 5 * self.data.shape[2], 5 * self.data.shape[3])
 
-        # import matplotlib.pyplot as plt
-        # plt.imshow(ret.detach().cpu().permute(0, 2, 3, 1).numpy()[0])
-        # plt.show()
-
         return ret
 
     def regions(self, radius):
-        mid_r, mid_c = self.data.shape[-2] // 2, self.data.shape[-1] // 2
-        return self.data[
-            :,
-            :, # pytorch prefers channel first
-            mid_r - radius: mid_r + radius + 1,
-            mid_c - radius: mid_c + radius + 1
-        ].unsqueeze(1)
+        w = self.data.shape[-1]
+        h = self.data.shape[-2]
+        mid_c = self.data.shape[-1] // 2
+        locs = [(h // 2, w // 2), (h // 4, w // 4), (3 * h // 4, w // 4), (h // 4, 3 * w // 4), (3 * h // 4, 3 * w // 4)][:2]
+        charts = [
+            self.data[
+                :,
+                :, # pytorch prefers channel first
+                r - radius: r + radius + 1,
+                c - radius: c + radius + 1
+            ] for r,c in locs
+        ]
+        return torch.stack(charts, dim=1)
