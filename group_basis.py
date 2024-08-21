@@ -11,7 +11,7 @@ DEBUG=0
 class GroupBasis(nn.Module):
     def __init__(
             self, in_dim, man_dim, out_dim, num_basis, standard_basis, 
-            in_rad=10, out_rad=5, lr=5e-4, r1=0.05, r2=1.0,
+            in_rad=10, out_rad=5, lr=5e-4, r1=0.1, r2=0.25, r3=2,
             identity_in_rep=False, identity_out_rep=False, in_interpolation='bilinear', out_interpolation='bilinear', dtype=torch.float32,
         ):
         super().__init__()
@@ -33,6 +33,7 @@ class GroupBasis(nn.Module):
         self.dtype = dtype
         self.r1 = r1
         self.r2 = r2
+        self.r3 = r3
         self.standard_basis = standard_basis
 
         self.lie_basis = nn.Parameter(torch.empty((num_basis, man_dim, man_dim), dtype=dtype).to(device))
@@ -155,7 +156,11 @@ class GroupBasis(nn.Module):
         # aim for as 'orthogonal' as possible basis matrices and in general avoid identity collapse
         r1 = self.similarity_loss(self.lie_basis)
 
-        trace = torch.sqrt(torch.einsum('kdf,kdf->k', self.lie_basis, self.lie_basis))
+        # past a certain point, increasing the basis means nothing
+        # we only want to increase to a certain extent
+
+        clipped = self.lie_basis.clamp(-self.r2, self.r2)
+        trace = torch.sqrt(torch.einsum('kdf,kdf->k', clipped, clipped))
         r2 = -torch.mean(trace)
 
-        return self.r1 * r1 + self.r2 * r2
+        return self.r1 * r1 + self.r3 * r2

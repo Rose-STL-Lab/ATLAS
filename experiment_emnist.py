@@ -79,7 +79,7 @@ class EMNISTPredictor(nn.Module, Predictor):
         return nn.functional.cross_entropy(xx, yy)
 
     def needs_training(self):
-        return False
+        return True
 
     def returns_logits(self):
         return True
