@@ -84,7 +84,7 @@ if __name__ == '__main__':
     predictor = torch.load('predictor.pt')
     
     basis = GroupBasis(
-        config.field_length, 2, config.label_length, 1, config.standard_basis, 
+        config.field_length, 2, config.label_length, 2, config.standard_basis, 
         lr=5e-4, in_rad=IN_RAD, out_rad=OUT_RAD, 
         identity_out_rep=True, out_interpolation='nearest', r2=7.0
     )
