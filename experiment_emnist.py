@@ -61,6 +61,9 @@ class EMNISTPredictor(nn.Module, Predictor):
         ).to(device)
         self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
 
+    def __call__(self, x):
+        return self.run(x)
+
     def run(self, x):
         org_batch = x.shape[:2]
         batched = torch.flatten(x, end_dim=1)
@@ -77,6 +80,9 @@ class EMNISTPredictor(nn.Module, Predictor):
 
     def needs_training(self):
         return False
+
+    def returns_logits(self):
+        return True
 
 
 class EMNISTDataset(torch.utils.data.Dataset):
@@ -105,12 +111,12 @@ class EMNISTDataset(torch.utils.data.Dataset):
 def discover():
     config = Config()
 
-    # predictor = EMNISTPredictor()
-    predictor = torch.load('predictor.pt')
+    predictor = EMNISTPredictor()
+    # predictor = torch.load('predictor.pt')
     
     basis = GroupBasis(
         1, 2, 62, 1, config.standard_basis, 
-        loss_type='cross_entropy', lr=5e-4, in_rad=IN_RAD, out_rad=OUT_RAD, 
+        lr=5e-4, in_rad=IN_RAD, out_rad=OUT_RAD, 
         identity_out_rep=True, # matrix exp of 62 x 62 matrix generally becomes nan
     )
 

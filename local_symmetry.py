@@ -17,6 +17,9 @@ class Predictor(ABC):
     def loss(self, y_pred, y_true):
         return rmse(y_pred, y_true)
 
+    def returns_logits(self):
+        return False
+
     # some predictors can be given as fixed functions
     def needs_training(self):
         return True
@@ -58,15 +61,16 @@ class LocalTrainer:
                     self.predictor.optimizer.step()
 
             p_losses = np.mean(p_losses) if len(p_losses) else 0
-                
+
+            # torch.save(self.predictor, 'predictor.pt')
+
             # train basis
             b_losses = []
             b_reg = []
-            for xx, yy in tqdm.tqdm(loader):
+            for xx, _ in tqdm.tqdm(loader):
                 xff = self.ff(xx)
-                yff = self.ff(yy)
 
-                b_loss = self.basis.step(xff, yff, self.predictor) 
+                b_loss = self.basis.step(xff, self.predictor) 
                 b_losses.append(float(b_loss))
 
                 reg = self.basis.regularization(e)
