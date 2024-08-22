@@ -47,7 +47,7 @@ class ClimatePredictor(Predictor):
         # return jaccard_loss(y_pred, y_true)
 
     def needs_training(self):
-        return False
+        return True
 
     def returns_logits(self):
         return True
