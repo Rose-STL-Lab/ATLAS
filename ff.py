@@ -45,7 +45,7 @@ class R2FeatureField(FeatureField):
         w = self.data.shape[-1]
         h = self.data.shape[-2]
         mid_c = self.data.shape[-1] // 2
-        locs = [(h * 0.375, w * 0.375), (0.625 * h, 0.625 * w), (h // 4, 3 * w // 4), (3 * h // 4, 3 * w // 4), (h // 2, w // 2)][:2]
+        locs = [(h * 0.5, w * 0.4), (h * 0.5, w * 0.45), (h * 0.5, w * 0.5), (h * 0.5, w * 0.55), (h * 0.5, w * 0.6)]
         locs = [(int(r), int(c)) for r, c in locs]
         charts = [
             self.data[

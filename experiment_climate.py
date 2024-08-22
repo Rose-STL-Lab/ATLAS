@@ -18,8 +18,8 @@ import numpy as np
 
 device = get_device()
 
-IN_RAD = 200
-OUT_RAD = 150
+IN_RAD = 350
+OUT_RAD = 200
 
 class ClimatePredictor(Predictor):
     def __init__(self, config):
@@ -47,7 +47,7 @@ class ClimatePredictor(Predictor):
         # return jaccard_loss(y_pred, y_true)
 
     def needs_training(self):
-        return True
+        return False
 
     def returns_logits(self):
         return True
@@ -80,13 +80,14 @@ if __name__ == '__main__':
     config.label_length = 3 # nothing, AR, TC
     config.field_length = len(config.fields)
 
-    # predictor = ClimatePredictor(config)
-    predictor = torch.load('predictor.pt')
+    predictor = ClimatePredictor(config)
+    # predictor = torch.load('predictor.pt')
     
     basis = GroupBasis(
-        config.field_length, 2, config.label_length, 2, config.standard_basis, 
+        config.field_length, 2, config.label_length, 3, config.standard_basis, 
         lr=5e-4, in_rad=IN_RAD, out_rad=OUT_RAD, 
-        identity_out_rep=True, out_interpolation='nearest', r2=7.0
+        identity_in_rep=True,
+        identity_out_rep=True, out_interpolation='nearest', r3=5.0
     )
 
     dataset = ClimateTorchDataset(path.join(train_path, 'train'), config)

@@ -67,10 +67,11 @@ class LocalTrainer:
             # train basis
             b_losses = []
             b_reg = []
-            for xx, _ in tqdm.tqdm(loader):
+            for xx, yy in tqdm.tqdm(loader):
                 xff = self.ff(xx)
+                yff = self.ff(yy)
 
-                b_loss = self.basis.step(xff, self.predictor) 
+                b_loss = self.basis.step(xff, self.predictor, yff) 
                 b_losses.append(float(b_loss))
 
                 reg = self.basis.regularization(e)

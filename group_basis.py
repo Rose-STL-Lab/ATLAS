@@ -11,7 +11,7 @@ DEBUG=0
 class GroupBasis(nn.Module):
     def __init__(
             self, in_dim, man_dim, out_dim, num_basis, standard_basis, 
-            in_rad=10, out_rad=5, lr=5e-4, r1=0.1, r2=0.25, r3=2,
+            in_rad=10, out_rad=5, lr=5e-4, r1=0.05, r2=0.25, r3=2,
             identity_in_rep=False, identity_out_rep=False, in_interpolation='bilinear', out_interpolation='bilinear', dtype=torch.float32,
         ):
         super().__init__()
@@ -40,7 +40,7 @@ class GroupBasis(nn.Module):
         self.in_basis = nn.Parameter(torch.empty((num_basis, in_dim, in_dim), dtype=dtype).to(device))
         self.out_basis = nn.Parameter(torch.empty((num_basis, out_dim, out_dim), dtype=dtype).to(device))
 
-        for tensor in [self.lie_basis, self.in_basis, self.out_basis]:
+        for tensor in [self.in_basis, self.lie_basis, self.out_basis]:
             nn.init.normal_(tensor, 0, 0.02)
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
@@ -84,7 +84,11 @@ class GroupBasis(nn.Module):
         """
         return torch.normal(0, 1, (*bs, self.num_basis)).to(device) 
 
-    def step(self, x, pred):
+    def step(self, x, pred, y):
+        """
+            y is only used for debug
+        """
+
         bs = x.batch_size()
 
         coeffs = self.sample_coefficients((bs, x.num_charts()))
@@ -106,6 +110,7 @@ class GroupBasis(nn.Module):
         g_x_atlas = transform_atlas(sampled_lie, sampled_in, x_atlas, self.in_interpolation)
 
         y_atlas = pred(x_atlas)
+        y_atlas = y.regions(self.out_rad)
         if pred.returns_logits():
             y_atlas = torch.nn.functional.softmax(y_atlas, dim=-3)
         y_atlas = y_atlas.detach()
@@ -117,26 +122,40 @@ class GroupBasis(nn.Module):
         DEBUG += 1
         if DEBUG == -1:
             import matplotlib.pyplot as plt
-            def plot_charts(original_charts, transformed_charts):
+            def plot_charts(x, gx, org_org, original_charts, transformed_charts):
                 bs, num_charts, ff_dim, height, width = original_charts.shape
                 
                 for b in range(1):
                     for n in range(1):
-                        fig, axs = plt.subplots(2, ff_dim, figsize=(5*ff_dim, 10))
+                        fig, axs = plt.subplots(3, 2, figsize=(5*ff_dim, 10))
                         fig.suptitle(f'Batch {b+1}, Chart {n+1}')
                     
-                        axs = axs.reshape(2, 1)
+                        axs = axs.reshape(3, 2)
 
                         for d in range(ff_dim):
+                            axs[0, 1].imshow(x[b, n, d].detach().cpu().numpy(), cmap='viridis')
+                            axs[0, 1].set_title(f'x')
+                            axs[0, 1].axis('off')
+
                             # Plot original chart
-                            axs[0, d].imshow(original_charts[b, n, d].detach().cpu().numpy(), cmap='viridis')
-                            axs[0, d].set_title(f'Original Channel {d+1}')
+                            axs[1, 1].imshow(gx[b, n, d].detach().cpu().numpy(), cmap='viridis')
+                            axs[1, 1].set_title(f'g * x')
+                            axs[1, 1].axis('off')
+
+                            # Plot original chart
+                            axs[0, d].imshow(org_org[b, n, d].detach().cpu().numpy(), cmap='viridis')
+                            axs[0, d].set_title(f'f(x) {d+1}')
                             axs[0, d].axis('off')
+
+                            # Plot original chart
+                            axs[1, d].imshow(original_charts[b, n, d].detach().cpu().numpy(), cmap='viridis')
+                            axs[1, d].set_title(f'g * f(x) {d+1}')
+                            axs[1, d].axis('off')
                             
                             # Plot transformed chart
-                            axs[1, d].imshow(transformed_charts[b, n, d].detach().cpu().numpy(), cmap='viridis')
-                            axs[1, d].set_title(f'Transformed Channel {d+1}')
-                            axs[1, d].axis('off')
+                            axs[2, d].imshow(transformed_charts[b, n, d].detach().cpu().numpy(), cmap='viridis')
+                            axs[2, d].set_title(f'f(g * x) {d+1}')
+                            axs[2, d].axis('off')
                         
                         plt.tight_layout()
                         plt.show() 
@@ -145,9 +164,14 @@ class GroupBasis(nn.Module):
             flat_y = torch.nn.functional.softmax(g_y_atlas.permute(0, 1, 3, 4, 2).flatten(0, 3)).reshape(s[0], s[1], s[3], s[4], s[2])
             flat_y = flat_y.permute(0, 1, 4, 2, 3)
 
-            plot_charts(torch.max(flat_y, dim=-3, keepdim=True)[1], torch.max(y_atlas_true, dim=-3, keepdim=True)[1])
+            s = g_y_atlas.shape
+            y_org = torch.nn.functional.softmax(y_atlas.permute(0, 1, 3, 4, 2).flatten(0, 3)).reshape(s[0], s[1], s[3], s[4], s[2])
+            y_org = y_org.permute(0, 1, 4, 2, 3)
+
+            plot_charts(x_atlas, g_x_atlas, torch.max(y_org, dim=-3, keepdim=True)[1], torch.max(flat_y, dim=-3, keepdim=True)[1], torch.max(y_atlas_true, dim=-3, keepdim=True)[1])
 
         raw = pred.loss(y_atlas_true, g_y_atlas)
+        print(raw)
 
         return raw
 
