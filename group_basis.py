@@ -11,7 +11,7 @@ DEBUG=0
 class GroupBasis(nn.Module):
     def __init__(
             self, in_dim, man_dim, out_dim, num_basis, standard_basis, 
-            in_rad=10, out_rad=5, lr=5e-4, r1=0.05, r2=0.25, r3=2,
+            in_rad=10, out_rad=5, lr=5e-4, r1=0.05, r2=0.25, r3=0.5,
             identity_in_rep=False, identity_out_rep=False, in_interpolation='bilinear', out_interpolation='bilinear', dtype=torch.float32,
         ):
         super().__init__()
@@ -42,6 +42,7 @@ class GroupBasis(nn.Module):
 
         for tensor in [self.in_basis, self.lie_basis, self.out_basis]:
             nn.init.normal_(tensor, 0, 0.02)
+
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
     
@@ -110,7 +111,6 @@ class GroupBasis(nn.Module):
         g_x_atlas = transform_atlas(sampled_lie, sampled_in, x_atlas, self.in_interpolation)
 
         y_atlas = pred(x_atlas)
-        y_atlas = y.regions(self.out_rad)
         if pred.returns_logits():
             y_atlas = torch.nn.functional.softmax(y_atlas, dim=-3)
         y_atlas = y_atlas.detach()
@@ -170,10 +170,7 @@ class GroupBasis(nn.Module):
 
             plot_charts(x_atlas, g_x_atlas, torch.max(y_org, dim=-3, keepdim=True)[1], torch.max(flat_y, dim=-3, keepdim=True)[1], torch.max(y_atlas_true, dim=-3, keepdim=True)[1])
 
-        raw = pred.loss(y_atlas_true, g_y_atlas)
-        print(raw)
-
-        return raw
+        return pred.loss(y_atlas_true, g_y_atlas)
 
     # called by LocalTrainer during training
     def regularization(self, e):
