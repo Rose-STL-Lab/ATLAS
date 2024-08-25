@@ -62,7 +62,8 @@ class LocalTrainer:
 
             p_losses = np.mean(p_losses) if len(p_losses) else 0
 
-            torch.save(self.predictor, 'predictor.pt')
+            if self.predictor.needs_training():
+                torch.save(self.predictor, 'predictor.pt')
 
             # train basis
             b_losses = []

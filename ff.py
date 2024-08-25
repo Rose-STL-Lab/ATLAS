@@ -26,13 +26,16 @@ class FeatureField(ABC):
     def batch_size(self):
         return self.data.shape[0]
 
-class UVFeatureField(FeatureField):
-    def __init__(self, data):
-        pass
-
 class R2FeatureField(FeatureField):
     def __init__(self, data):
         super().__init__(data)
+
+        w = self.data.shape[-1]
+        h = self.data.shape[-2]
+        mid_c = self.data.shape[-1] // 2
+        locs = [(h * 0.5, w * 0.5)]
+
+        self.locs = [(int(r), int(c)) for r, c in locs]
     
     def atlas(self):
         ret = torch.nn.functional.unfold(self.data, (5, 5), padding=2)
@@ -42,17 +45,12 @@ class R2FeatureField(FeatureField):
         return ret
 
     def regions(self, radius):
-        w = self.data.shape[-1]
-        h = self.data.shape[-2]
-        mid_c = self.data.shape[-1] // 2
-        locs = [(h * 0.5, w * 0.4), (h * 0.5, w * 0.5), (h * 0.5, w * 0.6)]
-        locs = [(int(r), int(c)) for r, c in locs]
         charts = [
             self.data[
                 :,
                 :, # pytorch prefers channel first
                 r - radius: r + radius + 1,
                 c - radius: c + radius + 1
-            ] for r,c in locs
+            ] for r,c in self.locs
         ]
         return torch.stack(charts, dim=1)
