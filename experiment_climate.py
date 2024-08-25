@@ -26,9 +26,6 @@ class ClimatePredictor(Predictor):
         super().__init__()
         self.network = CGNetModule(classes=config.label_length, channels=config.field_length).to(device)
         self.optimizer = Adam(self.network.parameters(), lr=1e-3)   
-    
-    def __call__(self, x):
-        return self.run(x)
 
     def run(self, x):
         ret = self.network(torch.flatten(x, 0, 1)).unflatten(0, x.shape[:2])
@@ -45,6 +42,9 @@ class ClimatePredictor(Predictor):
         y_true = y_true.permute(0, 1, 3, 4, 2).flatten(0, 3)
         return nn.functional.cross_entropy(y_pred, y_true)
         # return jaccard_loss(y_pred, y_true)
+
+    def name(self):
+        return "climate" 
 
     def needs_training(self):
         return True
@@ -80,11 +80,13 @@ if __name__ == '__main__':
     config.label_length = 3 # nothing, AR, TC
     config.field_length = len(config.fields)
 
-    predictor = ClimatePredictor(config)
-    # predictor = torch.load('predictor.pt')
+    if config.reuse_predictor:
+        predictor = torch.load('predictors/climate.pt')
+    else:
+        predictor = ClimatePredictor(config)
     
     basis = GroupBasis(
-        config.field_length, 2, config.label_length, 3, config.standard_basis, 
+        config.field_length, 2, config.label_length, 4, config.standard_basis, 
         lr=5e-4, in_rad=IN_RAD, out_rad=OUT_RAD, 
         identity_in_rep=True,
         identity_out_rep=True, out_interpolation='nearest', r3=5.0

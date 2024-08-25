@@ -10,8 +10,15 @@ from utils import rmse
 class Predictor(ABC):
     optimizer = None
 
+    def __call__(self, x):
+        return self.run(x)
+
     @abstractmethod
     def run(self, x):
+        pass
+
+    @abstractmethod
+    def name(self):
         pass
 
     def loss(self, y_pred, y_true):
@@ -63,7 +70,7 @@ class LocalTrainer:
             p_losses = np.mean(p_losses) if len(p_losses) else 0
 
             if self.predictor.needs_training():
-                torch.save(self.predictor, 'predictor.pt')
+                torch.save(self.predictor, "predictors/" + self.predictor.name() + '.pt')
 
             # train basis
             b_losses = []

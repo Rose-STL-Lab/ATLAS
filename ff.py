@@ -8,7 +8,7 @@ class FeatureField(ABC):
     @abstractmethod
     def atlas(self):
         '''
-            kernel size of 5
+            kernel size of 5, used in downstream cnn
         '''
         pass
 
@@ -17,6 +17,8 @@ class FeatureField(ABC):
         '''
             Should always be the same location and orientations,
             but the exact location and orientations are implementation defined
+            
+            used for predictor
         '''
         pass
 
