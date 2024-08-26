@@ -1,6 +1,6 @@
 import torch
-import escnn.nn as enn
 import torch.nn.functional as F
+import math
 import numpy as np
 
 
@@ -134,36 +134,90 @@ def affine_coord(tensor, dummy_pos=None):
 
 device = get_device()
 class ManifoldLayer(torch.nn.Module):
-    def __init__(self, in_field_type, out_field_type):
+    def __init__(self, in_field_len, out_field_len, G):
         super().__init__()
-        # self.conv = enn.R2Conv(in_field_type, out_field_type, kernel_size=5, stride=5)
-        # self.relu = enn.LeakyReLU(out_field_type)
 
-        self.conv = torch.nn.Conv2d(len(in_field_type), len(out_field_type), kernel_size=5, stride=5)
+        self.G = G
+
+        self.conv = torch.nn.Conv2d(in_field_len, out_field_len, kernel_size=5, stride=5)
+        self.batch_norm = torch.nn.BatchNorm2d(out_field_len)
         self.relu = torch.nn.LeakyReLU()
 
     def forward(self, x):
         ff_type = type(x)
 
         x = x.atlas()
-        # x = self.conv.in_type(x)
 
         x = self.conv(x)
         x = self.relu(x)
+        x = self.batch_norm(x)
 
         x = ff_type(x)
-        #x = ff_type(x.tensor)
 
         return x
 
+    def effective_param_count(self):
+        return self.kernel.numel() + self.bias.numel() + sum(p.numel() for p in self.batch_norm.parameters())
+
+# conceptually the same idea, but for manifolds
+# where atlas function is just the adjacent elements, we have an optimized version
+class ManifoldStandardLayer(torch.nn.Module):
+    def __init__(self, in_field_len, out_field_len, G):
+        super().__init__()
+
+        self.kernel = torch.nn.Parameter(torch.empty(out_field_len, in_field_len, 5, 5, device=device))
+        self.bias = torch.nn.Parameter(torch.empty(out_field_len, device=device))
+
+        # from pytorch
+        torch.nn.init.kaiming_uniform_(self.kernel, a=math.sqrt(5))
+        fan_in, _ = torch.nn.init._calculate_fan_in_and_fan_out(self.kernel)
+        if fan_in != 0:
+            bound = 1 / math.sqrt(fan_in)
+            torch.nn.init.uniform_(self.bias, -bound, bound)
+
+        self.G = G
+        self.batch_norm = torch.nn.BatchNorm2d(out_field_len)
+        self.relu = torch.nn.LeakyReLU()
+
+    def forward(self, x):
+        ff_type = type(x)
+
+        x = x.data
+
+        if self.G == 'trivial':
+            full_kernel = self.kernel
+        elif self.G == 'so2':
+            full_kernel = torch.zeros_like(self.kernel)
+            for i in range(4):
+                full_kernel += torch.rot90(self.kernel, k=i, dims=(-2, -1)) / 4
+        else:
+            raise ValueError()
+
+        x = torch.nn.functional.conv2d(x, full_kernel, self.bias, stride=1, padding=2)
+        x = self.relu(x)
+        x = self.batch_norm(x)
+
+        x = ff_type(x)
+
+        return x
+
+    def effective_param_count(self):
+        # a rotationall symmetry kernel only has 7 parameters in effect
+        return self.kernel.numel() * 7 / 25 + self.bias.numel() + sum(p.numel() for p in self.batch_norm.parameters())
+
+
 class ManifoldPredictor(torch.nn.Module):
-    def __init__(self, gact, types, ff_type):
+    def __init__(self, types, ff_type, G='trivial'):
         super().__init__()
 
         self.ff_type = ff_type
         layers = []
         for i, o in zip(types[:-1], types[1:]):
-            layers.append(ManifoldLayer(enn.FieldType(gact, i), enn.FieldType(gact, o)).to(device))
+            if self.ff_type.has_standard_atlas():
+                layers.append(ManifoldStandardLayer(i, o, G).to(device))
+            else:
+                layers.append(ManifoldLayer(i, o, G).to(device))
+                
         self.layers = torch.nn.ModuleList(layers)
 
     def forward(self, x):
@@ -173,4 +227,6 @@ class ManifoldPredictor(torch.nn.Module):
 
         return x.data
 
+    def effective_param_count(self):
+        return sum(l.effective_param_count() for l in self.layers)
 

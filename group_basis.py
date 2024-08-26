@@ -109,7 +109,7 @@ class GroupBasis(nn.Module):
         x_atlas = x.regions(self.in_rad)
         g_x_atlas = transform_atlas(sampled_lie, sampled_in, x_atlas, self.in_interpolation)
 
-        y_atlas = pred(x_atlas)
+        y_atlas = pred.run(x_atlas)
         if pred.returns_logits():
             y_atlas = torch.nn.functional.softmax(y_atlas, dim=-3)
         y_atlas = y_atlas.detach()
