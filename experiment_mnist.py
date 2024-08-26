@@ -33,7 +33,7 @@ class MNISTFeatureField(R2FeatureField):
         In this case, it makes sense to do equirectangular projection (especially since that's used in the projection code),
         but theoretically similar projections should work as well'''
 
-        max_r = self.data.shape[-1] / math.pi
+        max_r = self.data.shape[-2] / (2 * math.pi)
         assert radius < max_r
 
         ret = torch.zeros(self.data.shape[0], len(self.locs), self.data.shape[1], 2 * radius + 1, 2 * radius + 1)
@@ -142,23 +142,22 @@ class MNISTDataset(torch.utils.data.Dataset):
             transform=transforms.ToTensor()
         )
 
-        # 88 * 2 / pi
-        self.phi_step = 56
-        self.max_phi = math.pi / 3
+        self.w = 120
+        self.h = self.w // 2
 
-        self.x = torch.zeros(N, 1, 88, self.phi_step, device=device)
-        self.y = torch.zeros(N, NUM_CLASS, 88, self.phi_step, device=device)
+        self.x = torch.zeros(N, 1, self.w, self.h, device=device)
+        self.y = torch.zeros(N, NUM_CLASS, self.w, self.h, device=device)
 
         h = lambda x : hash(str(x))
 
         for i in range(N):
             j = [h(i) % N, (h(i) + 1) % N, (h(i) + 2) % N]
-            starts = [(1, 0), (30, 0), (57, 0)]
+            starts = [(int(self.w / 6) - 14, 0), (int(self.w / 2) - 14, 0), (int(self.w * 5 / 6) - 14, 0)]
 
             # x_flat/y_flat represent the digits on a cylinder
             # we then project onto the sphere (equirectangular)
-            x_flat = torch.zeros(1, 88, 28, device=device)
-            y_flat = torch.zeros(NUM_CLASS, 88, 28, device=device)
+            x_flat = torch.zeros(1, self.w, 28, device=device)
+            y_flat = torch.zeros(NUM_CLASS, self.w, 28, device=device)
 
             for jp, (r, c) in zip(j, starts):
                 theta = h(i + jp) % (2 * rotate) - rotate if rotate else 0
@@ -181,24 +180,21 @@ class MNISTDataset(torch.utils.data.Dataset):
             self.x[i] = self.project(x_flat)
             self.y[i] = self.project(y_flat)
 
-            # label anything not already labelled as 0
-            mask = torch.sum(self.y[i], dim=-3) == 0
-            self.y[i, 0][mask] = 1
-
-
     # equirectangular nearest neighbor
     def project(self, cylinder):
-        ret = torch.zeros((cylinder.shape[0], 88, self.phi_step), device=device)         
+        ret = torch.zeros((cylinder.shape[0], self.w, self.h), device=device)         
 
-        inds = torch.arange(-self.phi_step // 2, self.phi_step // 2, device=device)
-        phi = inds * math.pi / self.phi_step
-        y_val = (torch.sin(phi) / np.sin(self.max_phi) * 14 + 14).round().long()
+        inds = torch.arange(-self.h // 2, self.h // 2, device=device)
+        phi = inds * math.pi / self.h
+
+        r = self.w / (2 * math.pi)
+        y_val = (torch.sin(phi) * r + cylinder.shape[-1] / 2).round().long()
         
-        mask = (y_val >= 0) & (y_val < 28)
-        i_val = torch.arange(0, self.phi_step , device=device)[mask]
+        mask = (y_val >= 0) & (y_val < cylinder.shape[-1])
+        i_val = torch.arange(0, self.h, device=device)[mask]
         y_val = y_val[mask]
-        
-        x = torch.arange(88).unsqueeze(1)
+
+        x = torch.arange(self.w).unsqueeze(1)
         ret[:, x, i_val.unsqueeze(0)] = cylinder[:, x, y_val.unsqueeze(0)]
 
         return ret
@@ -223,7 +219,7 @@ def discover():
         identity_in_rep=True, identity_out_rep=True, # matrix exp of 62 x 62 matrix generally becomes nan
     )
 
-    dataset = MNISTDataset(config.N, rotate=180)
+    dataset = MNISTDataset(config.N, rotate=60)
 
     gdn = LocalTrainer(MNISTFeatureField, predictor, basis, dataset, config)   
     gdn.train()
