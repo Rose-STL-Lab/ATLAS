@@ -97,8 +97,8 @@ class SinglePredictor(nn.Module):
         ).to(device)
 
     def forward(self, x):
-        enc = self.down(x)
-        dec = self.up(enc)
+        enc = self.down(x.to(device))
+        dec = self.up(enc.to(device))
         return dec[:, :, :29, :29]
 
 class MNISTPredictor(nn.Module, Predictor):
@@ -119,12 +119,12 @@ class MNISTPredictor(nn.Module, Predictor):
             self.c1(x[:, 0]),
             self.c2(x[:, 1]),
             self.c3(x[:, 2]),
-        ], dim=1)
+        ], dim=1).cpu()
 
     def loss(self, xx, yy):
         xx = xx.permute(0, 1, 3, 4, 2).flatten(0, 3)
         yy = yy.permute(0, 1, 3, 4, 2).flatten(0, 3)
-        return nn.functional.cross_entropy(xx, yy)
+        return nn.functional.cross_entropy(xx, yy).to(device)
 
     def needs_training(self):
         return True

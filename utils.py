@@ -34,8 +34,8 @@ def transform_atlas(matrices, ff_matrices, charts, interpolation):
 
     grid = grid.unsqueeze(0).repeat(bs * num_charts, 1, 1, 1)
 
-    transformed_grid = torch.einsum('bji,bhwj->bhwi', matrices, grid)
-    transformed_grid = transformed_grid + torch.tensor([width/2, height/2], device=device)
+    transformed_grid = torch.einsum('bji,bhwj->bhwi', matrices, grid.to(matrices.device))
+    transformed_grid = transformed_grid.to(device) + torch.tensor([width/2, height/2], device=device)
 
     transformed_grid[:, :, :, 0] = transformed_grid[:, :, :, 0] / (width - 1) * 2 - 1
     transformed_grid[:, :, :, 1] = transformed_grid[:, :, :, 1] / (height - 1) * 2 - 1
@@ -44,7 +44,7 @@ def transform_atlas(matrices, ff_matrices, charts, interpolation):
 
     transformed_charts = F.grid_sample(charts_reshaped, transformed_grid, align_corners=True, padding_mode='border', mode=interpolation)
 
-    transformed_charts = torch.einsum('bij,bjhw->bihw', ff_matrices, transformed_charts)
+    transformed_charts = torch.einsum('bij,bjhw->bihw', ff_matrices.to(device), transformed_charts)
     transformed_charts = transformed_charts.view(bs, num_charts, ff_dim, height, width)
 
     def plot_charts(original_charts, transformed_charts):
