@@ -136,19 +136,23 @@ device = get_device()
 class ManifoldLayer(torch.nn.Module):
     def __init__(self, in_field_type, out_field_type):
         super().__init__()
-        self.conv = enn.R2Conv(in_field_type, out_field_type, kernel_size=5, stride=5)
-        self.relu = enn.LeakyReLU(out_field_type)
+        # self.conv = enn.R2Conv(in_field_type, out_field_type, kernel_size=5, stride=5)
+        # self.relu = enn.LeakyReLU(out_field_type)
+
+        self.conv = torch.nn.Conv2d(len(in_field_type), len(out_field_type), kernel_size=5, stride=5)
+        self.relu = torch.nn.LeakyReLU()
 
     def forward(self, x):
         ff_type = type(x)
 
         x = x.atlas()
-        x = self.conv.in_type(x)
+        # x = self.conv.in_type(x)
 
         x = self.conv(x)
         x = self.relu(x)
 
-        x = ff_type(x.tensor)
+        x = ff_type(x)
+        #x = ff_type(x.tensor)
 
         return x
 

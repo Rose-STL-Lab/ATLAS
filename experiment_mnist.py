@@ -13,7 +13,6 @@ from config import Config
 import torchvision
 from torchvision import datasets, transforms
 
-NORTHPOLE_EPSILON = 1e-3
 IN_RAD = 14
 OUT_RAD = 14
 NUM_CLASS = 10
@@ -33,8 +32,8 @@ class MNISTFeatureField(R2FeatureField):
     
     def regions(self, radius):
         ''' we assume a priori knowledge of a good chart
-        In this case, it makes sense to do equirectangular projection,
-        but theoretically other projections can work as well'''
+        In this case, it makes sense to do equirectangular projection (especially since that's used in the projection code),
+        but theoretically similar projections should work as well'''
 
         max_r = self.data.shape[-1] / math.pi
         assert radius < max_r
@@ -111,9 +110,6 @@ class MNISTPredictor(nn.Module, Predictor):
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
 
-    def __call__(self, x):
-        return self.run(x)
-
     def run(self, x):
         return torch.stack([
             self.c1(x[:, 0]),
@@ -125,6 +121,9 @@ class MNISTPredictor(nn.Module, Predictor):
         xx = xx.permute(0, 1, 3, 4, 2).flatten(0, 3)
         yy = yy.permute(0, 1, 3, 4, 2).flatten(0, 3)
         return nn.functional.cross_entropy(xx, yy).to(device)
+
+    def name(self):
+        return "mnist"
 
     def needs_training(self):
         return True
@@ -181,6 +180,10 @@ class MNISTDataset(torch.utils.data.Dataset):
             self.x[i] = self.project(x_flat)
             self.y[i] = self.project(y_flat)
 
+            # label anything not already labelled as 0
+            mask = torch.sum(self.y[i], dim=-3) == 0
+            self.y[i, 0][mask] = 1
+
 
     # equirectangular nearest neighbor
     def project(self, cylinder):
@@ -208,8 +211,10 @@ class MNISTDataset(torch.utils.data.Dataset):
 def discover():
     config = Config()
 
-    predictor = MNISTPredictor()
-    # predictor = torch.load('predictor.pt')
+    if config.reuse_predictor:
+        predictor = torch.load('predictors/mnist.pt')
+    else:
+        predictor = MnistPredictor()
     
     basis = GroupBasis(
         1, 2, NUM_CLASS, 1, config.standard_basis, 
@@ -232,9 +237,9 @@ def train(act):
 
     model = ManifoldPredictor(act, [
             1  * [act.trivial_repr],
-            16 * [act.regular_repr],
-            16 * [act.regular_repr],
-            16 * [act.regular_repr],
+            16 * [act.trivial_repr],
+            16 * [act.trivial_repr],
+            16 * [act.trivial_repr],
             NUM_CLASS * [act.trivial_repr],
         ], MNISTFeatureField)
 
@@ -259,6 +264,6 @@ def train(act):
 
 
 if __name__ == '__main__':
-    discover()
-    # train(escnn.gspaces.trivialOnR2())
+    # discover()
+    train(escnn.gspaces.trivialOnR2())
     # train(escnn.gspaces.rot2dOnR2(8))

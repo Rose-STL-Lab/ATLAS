@@ -4,7 +4,7 @@ from experiment_toptagging import ClassPredictor
 from utils import get_device
 
 device = get_device()
-model = torch.load('models/toptagclass.pt')
+model = torch.load('predictors/toptag.pt')
 
 class TopTagging(torch.utils.data.Dataset):
     def __init__(self, path='./data/top-tagging/val.h5', flatten=False, n_component=30, noise=0.0):
@@ -28,10 +28,12 @@ class TopTagging(torch.utils.data.Dataset):
 dataloader = torch.utils.data.DataLoader(TopTagging(), batch_size=64)
 
 delta = 0
+total = 0
 for xx, yy in dataloader:
     res = model.run(xx)
     _, ind = torch.max(res, dim=-1)
     yy = yy.to(device)
-    delta += (ind == yy).sum() / len(dataloader) / len(xx)
+    delta += (ind == yy).sum() / len(dataloader)
+    total += len(xx)
 
-print(delta)
+print(delta / total)
