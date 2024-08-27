@@ -2,8 +2,6 @@ import torch
 import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
-import escnn
-import escnn.nn as enn
 import math
 from utils import get_device, ManifoldPredictor
 from local_symmetry import Predictor, LocalTrainer
@@ -86,11 +84,11 @@ class SinglePredictor(nn.Module):
             nn.LeakyReLU(),
             nn.BatchNorm2d(64),
 
-            nn.ConvTranspose2d(64, 64, kernel_size=3, stride=2, padding=1, output_padding=0),
+            nn.ConvTranspose2d(64, 64, kernel_size=3, stride=2, padding=1),
             nn.LeakyReLU(),
             nn.BatchNorm2d(64),
 
-            nn.ConvTranspose2d(64, NUM_CLASS, kernel_size=3, stride=2, padding=1, output_padding=0),
+            nn.ConvTranspose2d(64, NUM_CLASS, kernel_size=3, stride=2, padding=1),
             nn.LeakyReLU(),
             nn.BatchNorm2d(NUM_CLASS),
         ).to(device)
@@ -109,6 +107,9 @@ class MNISTPredictor(nn.Module, Predictor):
         self.c3 = SinglePredictor()
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+
+    def forward(self, x):
+        return self.run(x)
 
     def run(self, x):
         return torch.stack([
@@ -133,7 +134,7 @@ class MNISTPredictor(nn.Module, Predictor):
 
 
 class MNISTDataset(torch.utils.data.Dataset):
-    def __init__(self, N, rotate=True, train=True):
+    def __init__(self, N, rotate=180, train=True):
         self.dataset = datasets.MNIST(
             root='./data',
             train=train,
@@ -160,7 +161,7 @@ class MNISTDataset(torch.utils.data.Dataset):
             y_flat = torch.zeros(NUM_CLASS, 88, 28, device=device)
 
             for jp, (r, c) in zip(j, starts):
-                theta = h(i + jp) % 360 if rotate else 0
+                theta = h(i + jp) % (2 * rotate) - rotate if rotate else 0
                 x, y = self.dataset[jp]
                 x_curr = torchvision.transforms.functional.rotate(x, theta)
 
@@ -214,39 +215,53 @@ def discover():
     if config.reuse_predictor:
         predictor = torch.load('predictors/mnist.pt')
     else:
-        predictor = MnistPredictor()
-    
+        predictor = MNISTPredictor()
+
     basis = GroupBasis(
         1, 2, NUM_CLASS, 1, config.standard_basis, 
         lr=5e-4, in_rad=IN_RAD, out_rad=OUT_RAD, 
         identity_in_rep=True, identity_out_rep=True, # matrix exp of 62 x 62 matrix generally becomes nan
     )
 
-    dataset = MNISTDataset(config.N)
+    dataset = MNISTDataset(config.N, rotate=180)
 
     gdn = LocalTrainer(MNISTFeatureField, predictor, basis, dataset, config)   
     gdn.train()
 
-def train(act):
+def train(G):
     import tqdm 
+
+    print("group =", G)
 
     config = Config()
 
-    dataset = MNISTDataset(config.N)
+    dataset = MNISTDataset(config.N, rotate = 0)
     loader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
 
-    model = ManifoldPredictor(act, [
-            1  * [act.trivial_repr],
-            16 * [act.trivial_repr],
-            16 * [act.trivial_repr],
-            16 * [act.trivial_repr],
-            NUM_CLASS * [act.trivial_repr],
-        ], MNISTFeatureField)
+    valid_dataset = MNISTDataset(1000, train=False, rotate = 0)
+    valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=config.batch_size, shuffle=True)
 
+    model = ManifoldPredictor([
+            1 ,
+            16,
+            16,
+            32,
+            32,
+            64,
+            64,
+            32,
+            32,
+            16,
+            16,
+            NUM_CLASS 
+        ], MNISTFeatureField, G)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
     for e in range(config.epochs):
         total_loss = 0
+        total_acc = 0
+
+        model.train()
         for xx, yy in tqdm.tqdm(loader):
             y_pred = model(xx)
 
@@ -260,10 +275,23 @@ def train(act):
             loss.backward()
             optimizer.step()
 
-        print("Loss", total_loss)
+        model.eval()
+        for xx, yy in tqdm.tqdm(valid_loader):
+            y_pred = model(xx)
+
+            y_pred = y_pred.permute(0, 2, 3, 1).flatten(0, 2)
+            yy = yy.permute(0, 2, 3, 1).flatten(0, 2)
+
+            y_pred_ind = torch.max(y_pred, dim=-1, keepdim=True)[1]
+            y_true_ind = torch.max(yy, dim=-1, keepdim=True)[1]
+            total_acc += (y_pred_ind == y_true_ind).float().mean() / len(valid_loader)
+
+
+        torch.save(model, 'predictors/mnist_' + G + '.pt')
+        print("Loss", total_loss, "Accurary", total_acc)
 
 
 if __name__ == '__main__':
-    # discover()
-    train(escnn.gspaces.trivialOnR2())
-    # train(escnn.gspaces.rot2dOnR2(8))
+    discover()
+    # train('trivial')
+    # train('so2')

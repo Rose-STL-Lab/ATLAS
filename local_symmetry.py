@@ -10,6 +10,7 @@ from utils import rmse
 class Predictor(ABC):
     optimizer = None
 
+    # alias for run
     def __call__(self, x):
         return self.run(x)
 

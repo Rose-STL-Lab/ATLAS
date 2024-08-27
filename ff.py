@@ -12,6 +12,13 @@ class FeatureField(ABC):
         '''
         pass
 
+    @staticmethod
+    @abstractmethod
+    def has_standard_atlas():
+        ''' atlas is just pixelwise neighbors, in which case convolution is optimized
+        '''
+        pass
+
     @abstractmethod
     def regions(self, radius):
         '''
@@ -45,6 +52,10 @@ class R2FeatureField(FeatureField):
         ret = ret.permute(0, 1, 4, 2, 5, 3).reshape(-1, self.data.shape[1], 5 * self.data.shape[2], 5 * self.data.shape[3])
 
         return ret
+
+    @staticmethod
+    def has_standard_atlas():
+        return True
 
     def regions(self, radius):
         charts = [
