@@ -11,7 +11,7 @@ DEBUG=0
 class GroupBasis(nn.Module):
     def __init__(
             self, in_dim, man_dim, out_dim, num_basis, standard_basis, 
-            in_rad=10, out_rad=5, lr=5e-4, r1=0.05, r2=1.5, r3=1,
+            in_rad=10, out_rad=5, lr=5e-4, r1=0.05, r2=1, r3=1,
             identity_in_rep=False, identity_out_rep=False, in_interpolation='bilinear', out_interpolation='bilinear', dtype=torch.float32,
         ):
         super().__init__()
