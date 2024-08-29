@@ -12,7 +12,7 @@ def mae(xx, yy):
     return torch.mean(torch.abs(xx - yy))
 
 
-def get_device(no_mps=True):
+def get_device(no_mps=False):
     if no_mps:
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
@@ -162,7 +162,7 @@ class ManifoldLayer(torch.nn.Module):
 # conceptually the same idea, but for manifolds
 # where atlas function is just the adjacent elements, we have an optimized version
 class ManifoldStandardLayer(torch.nn.Module):
-    def __init__(self, in_field_len, out_field_len, G):
+    def __init__(self, in_field_len, out_field_len, G, dilation=1):
         super().__init__()
 
         self.kernel = torch.nn.Parameter(torch.empty(out_field_len, in_field_len, 5, 5, device=device))
@@ -176,6 +176,7 @@ class ManifoldStandardLayer(torch.nn.Module):
             torch.nn.init.uniform_(self.bias, -bound, bound)
 
         self.G = G
+        self.dilation = dilation
         self.batch_norm = torch.nn.BatchNorm2d(out_field_len)
         self.relu = torch.nn.LeakyReLU()
 
@@ -193,7 +194,7 @@ class ManifoldStandardLayer(torch.nn.Module):
         else:
             raise ValueError()
 
-        x = torch.nn.functional.conv2d(x, full_kernel, self.bias, stride=1, padding=2)
+        x = torch.nn.functional.conv2d(x, full_kernel, self.bias, stride=1, padding=2*self.dilation, dilation=self.dilation)
         x = self.relu(x)
         x = self.batch_norm(x)
 
@@ -202,8 +203,14 @@ class ManifoldStandardLayer(torch.nn.Module):
         return x
 
     def effective_param_count(self):
-        # a rotationall symmetry kernel only has 7 parameters in effect
-        return self.kernel.numel() * 7 / 25 + self.bias.numel() + sum(p.numel() for p in self.batch_norm.parameters())
+        mul = 1
+        if self.G == 'trivial':
+            mul = 1
+        elif self.G == 'so2':
+            # a rotationall symmetry kernel only has 7 parameters in effect
+            mul = 7 / 25
+
+        return int(self.kernel.numel() * mul + self.bias.numel() + sum(p.numel() for p in self.batch_norm.parameters()))
 
 
 class ManifoldPredictor(torch.nn.Module):
@@ -212,9 +219,9 @@ class ManifoldPredictor(torch.nn.Module):
 
         self.ff_type = ff_type
         layers = []
-        for i, o in zip(types[:-1], types[1:]):
+        for i, o, d in types:
             if self.ff_type.has_standard_atlas():
-                layers.append(ManifoldStandardLayer(i, o, G).to(device))
+                layers.append(ManifoldStandardLayer(i, o, G, dilation=d).to(device))
             else:
                 layers.append(ManifoldLayer(i, o, G).to(device))
                 

@@ -240,18 +240,18 @@ def train(G):
     valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=config.batch_size, shuffle=True)
 
     model = ManifoldPredictor([
-            1 ,
-            16,
-            16,
-            32,
-            32,
-            64,
-            64,
-            32,
-            32,
-            16,
-            16,
-            NUM_CLASS 
+            [1, 32, 1],
+            [32, 32, 1],
+            [32, 64, 1],
+            [64, 64, 1],
+            [64, 64, 2],
+            [64, 32, 2],
+            [32, 32, 2],
+            [32, 32, 2],
+            [32, 32, 1],
+            [32, 16, 1],
+            [16, 16, 1],
+            [16, NUM_CLASS, 1],
         ], MNISTFeatureField, G)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
@@ -296,6 +296,6 @@ def train(G):
 
 
 if __name__ == '__main__':
-    discover()
+    # discover()
     # train('trivial')
-    # train('so2')
+    train('so2')

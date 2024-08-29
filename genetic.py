@@ -5,10 +5,11 @@ from utils import rmse, get_device
 device = get_device()
 
 class Genetic:
-    def __init__(self, score_fn, num_pops, pop_size, man_dim, mutation_eps=2):
+    def __init__(self, score_fn, num_pops, pop_size, man_dim, mutation_eps=0.05):
         self.score_fn = score_fn
-        self.matrices = torch.empty(num_pops, pop_size, man_dim, man_dim, device=device)
+        self.matrices = torch.zeros(num_pops, pop_size, man_dim, man_dim, device=device)
         self.mutation_eps = mutation_eps
+
         torch.nn.init.normal_(self.matrices, 0, 1)
 
     def print(self, gen_num, score):
@@ -25,8 +26,10 @@ class Genetic:
             rate = self.mutation_eps # / (i + 1)
             self.matrices += torch.randn(*self.matrices.shape, device=device) * rate
 
+            # keep the parents
+            self.matrices[:, 0] = parents
+
             self.print(i, torch.min(scores).detach())
-            print("Average Score", torch.mean(scores[torch.arange(scores.shape[0]), leader_inds]).detach())
 
 
 if __name__ == '__main__':
