@@ -211,7 +211,8 @@ if __name__ == '__main__':
     for e in range(40):
         average_losses = []
         for xx, yy in tqdm.tqdm(loader):
-            normalized = matrices / torch.det(matrices).unsqueeze(-1).unsqueeze(-1)
+            det = torch.abs(torch.det(matrices).unsqueeze(-1).unsqueeze(-1))
+            normalized = matrices / (det ** 0.25)
             g_x = torch.einsum('pij, bcj -> pbci', normalized, xx)
             x = xx.unsqueeze(0).expand(g_x.shape)
 
@@ -235,6 +236,7 @@ if __name__ == '__main__':
 
         min_loss = np.min(np.mean(average_losses, axis=0))
         min_index = np.argmin(np.mean(average_losses, axis=0))
-        normalized = matrices / torch.det(matrices).unsqueeze(-1).unsqueeze(-1)
+        det = torch.abs(torch.det(matrices).unsqueeze(-1).unsqueeze(-1))
+        normalized = matrices / (det ** 0.25)
         print("Loss", min_loss, normalized[min_index].detach())
 
