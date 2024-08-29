@@ -17,7 +17,7 @@ NUM_CLASS = 10
 
 device = get_device()
 
-class HeatFeatureField(R2FeatureField):
+class MNISTFeatureField(R2FeatureField):
     def __init__(self, data):
         super().__init__(data)
 
@@ -94,13 +94,13 @@ class SinglePredictor(nn.Module):
         ).to(device)
 
     def forward(self, x):
-        enc = self.down(x)
-        dec = self.up(enc)
+        enc = self.down(x.to(device))
+        dec = self.up(enc.to(device))
         return dec[:, :, :29, :29]
 
-class HeatPredictor(nn.Module, Predictor):
+class MNISTPredictor(nn.Module, Predictor):
     def __init__(self):
-        super(HeatPredictor, self).__init__()
+        super(MNISTPredictor, self).__init__()
         
         self.c1 = SinglePredictor()
         self.c2 = SinglePredictor()
@@ -116,15 +116,15 @@ class HeatPredictor(nn.Module, Predictor):
             self.c1(x[:, 0]),
             self.c2(x[:, 1]),
             self.c3(x[:, 2]),
-        ], dim=1)
+        ], dim=1).cpu()
 
     def loss(self, xx, yy):
         xx = xx.permute(0, 1, 3, 4, 2).flatten(0, 3)
         yy = yy.permute(0, 1, 3, 4, 2).flatten(0, 3)
-        return nn.functional.cross_entropy(xx, yy)
+        return nn.functional.cross_entropy(xx, yy).to(device)
 
     def name(self):
-        return "heat"
+        return "mnist"
 
     def needs_training(self):
         return True
@@ -133,9 +133,9 @@ class HeatPredictor(nn.Module, Predictor):
         return True
 
 
-class HeatDataset(torch.utils.data.Dataset):
+class MNISTDataset(torch.utils.data.Dataset):
     def __init__(self, N, rotate=180, train=True):
-        self.dataset = datasets.Heat(
+        self.dataset = datasets.MNIST(
             root='./data',
             train=train,
             download=True,
@@ -179,7 +179,27 @@ class HeatDataset(torch.utils.data.Dataset):
 
 
             self.x[i] = self.project(x_flat)
+            # some y regions are unlabeled. We haven't seen this to cause issues
             self.y[i] = self.project(y_flat)
+
+    # equirectangular nearest neighbor
+    def project(self, cylinder):
+        ret = torch.zeros((cylinder.shape[0], self.w, self.h), device=device)         
+
+        inds = torch.arange(-self.h // 2, self.h // 2, device=device)
+        phi = inds * math.pi / self.h
+
+        r = self.w / (2 * math.pi)
+        y_val = (torch.sin(phi) * r + cylinder.shape[-1] / 2).round().long()
+        
+        mask = (y_val >= 0) & (y_val < cylinder.shape[-1])
+        i_val = torch.arange(0, self.h, device=device)[mask]
+        y_val = y_val[mask]
+
+        x = torch.arange(self.w).unsqueeze(1)
+        ret[:, x, i_val.unsqueeze(0)] = cylinder[:, x, y_val.unsqueeze(0)]
+
+        return ret
 
     def __len__(self):
         return len(self.x)
@@ -191,20 +211,91 @@ def discover():
     config = Config()
 
     if config.reuse_predictor:
-        predictor = torch.load('predictors/heat.pt')
+        predictor = torch.load('predictors/mnist.pt')
     else:
-        predictor = HeatPredictor()
+        predictor = MNISTPredictor()
 
     basis = GroupBasis(
         1, 2, NUM_CLASS, 1, config.standard_basis, 
         lr=5e-4, in_rad=IN_RAD, out_rad=OUT_RAD, 
-        identity_in_rep=True, identity_out_rep=True, # matrix exp of 62 x 62 matrix generally becomes nan
+        identity_in_rep=True, identity_out_rep=True, 
     )
 
-    dataset = HeatDataset(config.N, rotate=60)
+    dataset = MNISTDataset(config.N, rotate=60)
 
-    gdn = LocalTrainer(HeatFeatureField, predictor, basis, dataset, config)   
+    gdn = LocalTrainer(MNISTFeatureField, predictor, basis, dataset, config)   
     gdn.train()
 
+def train(G):
+    import tqdm 
+
+    print("group =", G)
+
+    config = Config()
+
+    dataset = MNISTDataset(config.N, rotate = 60)
+    loader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
+
+    valid_dataset = MNISTDataset(10000, train=False, rotate = 180)
+    valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=config.batch_size, shuffle=True)
+
+    model = ManifoldPredictor([
+            [1, 32, 1],
+            [32, 32, 1],
+            [32, 64, 1],
+            [64, 64, 1],
+            [64, 64, 2],
+            [64, 32, 2],
+            [32, 32, 2],
+            [32, 32, 2],
+            [32, 32, 1],
+            [32, 16, 1],
+            [16, 16, 1],
+            [16, NUM_CLASS, 1],
+        ], MNISTFeatureField, G)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+    for e in range(config.epochs):
+        total_loss = 0
+        total_acc = 0
+        train_acc = 0
+
+        model.train()
+        for xx, yy in tqdm.tqdm(loader):
+            y_pred = model(xx)
+
+            y_pred = y_pred.permute(0, 2, 3, 1).flatten(0, 2)
+            yy = yy.permute(0, 2, 3, 1).flatten(0, 2)
+            loss = torch.nn.functional.cross_entropy(y_pred, yy)
+
+            valid = torch.sum(yy, dim=-1) != 0
+            y_pred_ind = torch.max(y_pred, dim=-1, keepdim=True)[1][valid]
+            y_true_ind = torch.max(yy, dim=-1, keepdim=True)[1][valid]
+            train_acc += (y_pred_ind == y_true_ind).float().mean() / len(loader)
+
+            total_loss += loss / len(loader)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+        model.eval()
+        for xx, yy in tqdm.tqdm(valid_loader):
+            y_pred = model(xx)
+
+            y_pred = y_pred.permute(0, 2, 3, 1).flatten(0, 2)
+            yy = yy.permute(0, 2, 3, 1).flatten(0, 2)
+
+            valid = torch.sum(yy, dim=-1) != 0
+            y_pred_ind = torch.max(y_pred, dim=-1, keepdim=True)[1][valid]
+            y_true_ind = torch.max(yy, dim=-1, keepdim=True)[1][valid]
+            total_acc += (y_pred_ind == y_true_ind).float().mean() / len(valid_loader)
+
+        torch.save(model, 'predictors/mnist_' + G + '.pt')
+        print("Loss", total_loss, "Train Accuracy", train_acc, "Valid Accurary", total_acc)
+
+
 if __name__ == '__main__':
-    discover()
+    # discover()
+    # train('trivial')
+    train('so2')

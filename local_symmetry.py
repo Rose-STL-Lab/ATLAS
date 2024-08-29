@@ -10,12 +10,23 @@ from utils import rmse
 class Predictor(ABC):
     optimizer = None
 
+    # alias for run
+    def __call__(self, x):
+        return self.run(x)
+
     @abstractmethod
     def run(self, x):
         pass
 
+    @abstractmethod
+    def name(self):
+        pass
+
     def loss(self, y_pred, y_true):
         return rmse(y_pred, y_true)
+
+    def returns_logits(self):
+        return False
 
     # some predictors can be given as fixed functions
     def needs_training(self):
@@ -23,13 +34,8 @@ class Predictor(ABC):
 
 
 class LocalTrainer:
-    def __init__(self, predictor, basis, dataset, config, debug=True):
-        """
-            predictor: local_symmetry.py/Predictor
-                This corresponds to xi in the proposal 
-            basis: GroupBasis
-                Basis for the discovered symmetry group (somewhat corresponding to G in the proposal)
-        """
+    def __init__(self, ff, predictor, basis, dataset, config, debug=True):
+        self.ff = ff
         self.predictor = predictor
         self.basis = basis
         self.dataset = dataset
@@ -40,34 +46,42 @@ class LocalTrainer:
             torch.set_printoptions(precision=9, sci_mode=False)
 
     def train(self):
-        loader = torch.utils.data.DataLoader(self.dataset, batch_size=self.config.batch_size, shuffle=True)
+        collate_fn = self.dataset.collate if hasattr(self.dataset, 'collate') else None
+        loader = torch.utils.data.DataLoader(self.dataset, batch_size=self.config.batch_size, collate_fn=collate_fn, shuffle=True)
 
         for e in range(self.config.epochs):
             # train predictor
             p_losses = []
             if self.predictor.needs_training():
                 for xx, yy in tqdm.tqdm(loader):
-                    y_pred = self.predictor(xx)
+                    xff = self.ff(xx)
+                    yff = self.ff(yy)
 
-                    p_loss = self.predictor.loss(y_pred, yy)
+                    # relying on basis for radius is ugly ...
+                    y_pred = self.predictor.run(xff.regions(self.basis.in_rad))
+                    y_true = yff.regions(self.basis.out_rad)
+
+                    p_loss = self.predictor.loss(y_pred, y_true)
                     p_losses.append(float(p_loss.detach().cpu()))
 
                     self.predictor.optimizer.zero_grad()
                     p_loss.backward()
                     self.predictor.optimizer.step()
 
-                torch.save(self.predictor, f"models/toptagclass_{e}.pt")
             p_losses = np.mean(p_losses) if len(p_losses) else 0
-                
+
+            if self.predictor.needs_training():
+                torch.save(self.predictor, "predictors/" + self.predictor.name() + '.pt')
+
             # train basis
             b_losses = []
             b_reg = []
             for xx, yy in tqdm.tqdm(loader):
-                xp, yp = self.basis.apply(xx, yy)
-                model_prediction = self.predictor.run(xp)
+                xff = self.ff(xx)
+                yff = self.ff(yy)
 
-                b_loss = self.basis.loss(model_prediction, yp) 
-                b_losses.append(float(b_loss.detach().cpu()))
+                b_loss = self.basis.step(xff, self.predictor, yff) 
+                b_losses.append(float(b_loss))
 
                 reg = self.basis.regularization(e)
                 b_loss += reg
