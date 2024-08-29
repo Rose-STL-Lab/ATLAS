@@ -3,9 +3,10 @@ import torch.nn as nn
 from utils import get_device
 from local_symmetry import Predictor, LocalTrainer
 from group_basis import GroupBasis
+from ff_transformer import SingletonFFTransformer
 from config import Config
 from climatenet.utils.data import ClimateDatasetLabeled, ClimateDataset
-from climatenet.models import CGNet, CGNetModule, CGNetModule2
+from climatenet.models import CGNet, CGNetModule
 from climatenet.utils.losses import jaccard_loss
 from climatenet.utils.metrics import get_cm, get_iou_perClass
 from ff import R2FeatureField
@@ -23,13 +24,8 @@ OUT_RAD = 200
 class ClimatePredictor(Predictor):
     def __init__(self, config):
         super().__init__()
-        #self.network = CGNetModule2(classes=config.label_length, channels=config.field_length, freeze=True).to(device)
         self.network = CGNetModule(classes=config.label_length, channels=config.field_length).to(device)
-        self.optimizer = Adam(self.network.parameters(), lr=1e-3)
-    
-        # print number of parameters
-        # total_param = sum(p.numel() for p in self.network.parameters())
-        # print(total_param)
+        self.optimizer = Adam(self.network.parameters(), lr=1e-3)   
 
     def run(self, x):
         ret = self.network(torch.flatten(x, 0, 1)).unflatten(0, x.shape[:2])
@@ -90,7 +86,7 @@ if __name__ == '__main__':
         predictor = ClimatePredictor(config)
     
     basis = GroupBasis(
-        config.field_length, 2, config.label_length, 3, config.standard_basis, 
+        config.field_length, 2, config.label_length, 4, config.standard_basis, 
         lr=5e-4, in_rad=IN_RAD, out_rad=OUT_RAD, 
         identity_in_rep=True,
         identity_out_rep=True, out_interpolation='nearest', r3=5.0
