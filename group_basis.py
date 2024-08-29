@@ -6,28 +6,6 @@ import numpy as np
 from utils import get_device, rmse, transform_atlas
 device = get_device()
 
-<<<<<<< HEAD
-class Homomorphism:
-    def apply_y(self, x_action, y):
-        y_action = self.forward(x_action)
-        return (y_action @ y.unsqueeze(-1)).squeeze(-1)
-
-class TrivialHomomorphism(Homomorphism):
-    def __init__(self, manifold_shape, ff_dim):
-        self.identity = torch.eye(ff_dim, ff_dim).expand(*manifold_shape, ff_dim, ff_dim)
-
-    def forward(self, x):
-        return self.identity
-
-    def apply_y(self, x_action, y):
-        return y
-
-class GroupBasis(nn.Module):
-    def __init__(self, input_dim, transformer, homomorphism, num_basis, standard_basis, loss_type='rmse', lr=5e-4, reg_fac=0.05, invar_fac=3, coeff_epsilon=1e-1, dtype=torch.float32):
-        super().__init__()
-
-        self.input_dim = input_dim
-=======
 DEBUG=0
 
 class GroupBasis(nn.Module):
@@ -51,7 +29,6 @@ class GroupBasis(nn.Module):
         self.identity_in_rep = identity_in_rep
         self.identity_out_rep = identity_out_rep
 
->>>>>>> gauge_discovery
         self.num_basis = num_basis
         self.dtype = dtype
         self.r1 = r1
@@ -59,19 +36,12 @@ class GroupBasis(nn.Module):
         self.r3 = r3
         self.standard_basis = standard_basis
 
-<<<<<<< HEAD
-        self.transformer = transformer
-        self.homomorphism = homomorphism
-        self.lie_basis = nn.Parameter(torch.empty((num_basis, input_dim, input_dim), dtype=dtype).to(device))
-        nn.init.normal_(self.lie_basis, 0, 0.02)
-=======
         self.lie_basis = nn.Parameter(torch.empty((num_basis, man_dim, man_dim), dtype=dtype).to(device))
         self.in_basis = nn.Parameter(torch.empty((num_basis, in_dim, in_dim), dtype=dtype).to(device))
         self.out_basis = nn.Parameter(torch.empty((num_basis, out_dim, out_dim), dtype=dtype).to(device))
 
         for tensor in [self.in_basis, self.lie_basis, self.out_basis]:
             nn.init.normal_(tensor, 0, 0.02)
->>>>>>> gauge_discovery
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
     

@@ -296,6 +296,6 @@ def train(G):
 
 
 if __name__ == '__main__':
-    # discover()
+    discover()
     # train('trivial')
-    train('so2')
+    # train('so2')
