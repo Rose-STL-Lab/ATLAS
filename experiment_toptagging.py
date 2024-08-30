@@ -64,22 +64,13 @@ class TopTagging(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
 
-def train():
-    for e in range(0, config.epochs):
-        #train predictor
-        run(e, dataloaders['train'], "predictor")
-
-        #train basis
-        run(e, dataloaders['train'], "basis")
-
-        print("Discovered Basis \n", basis.summary())
-
 if __name__ == '__main__':
     torch.set_printoptions(precision=9, sci_mode=False)
 
     n_dim = 4
     n_component=30
     n_class = 2
+    max_discrete = 4
     ortho_factor = 0.1
     growth_factor = 1
 
@@ -161,11 +152,11 @@ if __name__ == '__main__':
 
 
     # discover discrete generators 
-    matrices = torch.nn.Parameter(torch.zeros(400, 4, 4))
+    matrices = torch.nn.Parameter(torch.zeros(512, 4, 4))
     torch.nn.init.normal_(matrices, 0, 1)
     optimizer = torch.optim.Adam([matrices])
 
-    for e in range(40):
+    for e in range(config.epochs):
         average_losses = []
         for xx, yy in tqdm.tqdm(loader):
             det = torch.abs(torch.det(matrices).unsqueeze(-1).unsqueeze(-1))
@@ -191,10 +182,49 @@ if __name__ == '__main__':
             optimizer.step()
 
 
-        min_loss = np.min(np.mean(average_losses, axis=0))
-        min_index = np.argmin(np.mean(average_losses, axis=0))
+        average_losses = np.mean(average_losses, axis=0)
+
+        min_loss = np.min(average_losses)
+        min_index = np.argmin(average_losses)
         det = torch.abs(torch.det(matrices).unsqueeze(-1).unsqueeze(-1))
         normalized = matrices / (det ** 0.25)
-        print("Loss", min_loss, normalized[min_index].detach())
+        print("Loss", min_loss, "Best", normalized[min_index].detach())
 
-    train()
+        if e == config.epochs - 1:
+            inds = np.argsort(average_losses)
+            normalized = normalized[inds].detach().cpu()
+
+            def relates(a, b):
+                diff = torch.linalg.inv(a) @ b
+                if torch.det(diff) < 0:
+                    return False
+
+                if diff[0][0] < 0:
+                    return False
+
+                # otherwise, check if it preserves the the quadratic on the unit vectors
+                # (heuristic, realistically if it passes the first two, they probably relate
+                # as we are iterating the matrices in order)
+                def good_column(t, x, y, z):
+                    return np.abs((t * t - x * x - y * y - z * z) - 1) < 1e-2
+
+                return np.all([good_column(*column) for column in diff])
+
+            # print out 4 highest matrices that do not relate (by SO+(1, 3)) to one another
+            # This dataset does not have any time reversal, so we cannot find P or PT
+            # but we are generally able to find P
+            final = []
+
+            for mat in normalized:
+                if len(final) == max_discrete:
+                    break
+
+                for f in final:
+                    if relates(f, mat):
+                        break
+                else:
+                    final.append(mat)
+            print("Final Discrete Matrices")
+            for tensor in final:
+                print(tensor)
+
