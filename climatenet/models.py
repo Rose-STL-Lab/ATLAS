@@ -42,7 +42,9 @@ class CGNet():
         Stores the optimizer we use for training the model
     '''
 
-    def __init__(self, config: Config = None, model_path: str = None):
+    def __init__(self, equivariant, device, config: Config = None, model_path: str = None):
+        self.device = device
+        self.equivariant = equivariant
     
         if config is not None and model_path is not None:
             raise ValueError('''Config and weight path set at the same time. 
@@ -52,11 +54,11 @@ class CGNet():
         if config is not None:
             # Create new model
             self.config = config
-            self.network = CGNetModule(classes=len(self.config.labels), channels=len(list(self.config.fields))).cuda()
+            self.network = CGNetModule(equivariant, classes=len(self.config.labels), channels=len(list(self.config.fields))).to(device)
         elif model_path is not None:
             # Load model
             self.config = Config(path.join(model_path, 'config.json'))
-            self.network = CGNetModule(classes=len(self.config.labels), channels=len(list(self.config.fields))).cuda()
+            self.network = CGNetModule(equivariant, classes=len(self.config.labels), channels=len(list(self.config.fields))).to(device)
             self.network.load_state_dict(torch.load(path.join(model_path, 'weights.pth')))
         else:
             raise ValueError('''You need to specify either a config or a model path.''')
@@ -77,8 +79,8 @@ class CGNet():
             for features, labels in epoch_loader:
         
                 # Push data on GPU and pass forward
-                features = torch.tensor(features.values).cuda()
-                labels = torch.tensor(labels.values).cuda()
+                features = torch.tensor(features.values).to(self.device)
+                labels = torch.tensor(labels.values).to(self.device)
                 
                 outputs = torch.softmax(self.network(features), 1)
 
@@ -107,7 +109,7 @@ class CGNet():
 
         predictions = []
         for batch in epoch_loader:
-            features = torch.tensor(batch.values).cuda()
+            features = torch.tensor(batch.values).to(self.device)
         
             with torch.no_grad():
                 outputs = torch.softmax(self.network(features), 1)
@@ -133,8 +135,8 @@ class CGNet():
 
         for features, labels in epoch_loader:
         
-            features = torch.tensor(features.values).cuda()
-            labels = torch.tensor(labels.values).cuda()
+            features = torch.tensor(features.values).to(self.device)
+            labels = torch.tensor(labels.values).to(self.device)
                 
             with torch.no_grad():
                 outputs = torch.softmax(self.network(features), 1)
@@ -163,7 +165,7 @@ class CGNet():
         we instantly see that we're loading a model, and don't have to look at the arguments of the constructor first.
         '''
         self.config = Config(path.join(model_path, 'config.json'))
-        self.network = CGNetModule(classes=len(self.config.labels), channels=len(list(self.config.fields))).cuda()
+        self.network = CGNetModule(self.equivariant, classes=len(self.config.labels), channels=len(list(self.config.fields))).to(self.device)
         self.network.load_state_dict(torch.load(path.join(model_path, 'weights.pth')))
 
 
@@ -172,7 +174,7 @@ class CGNetModule(nn.Module):
     CGNet (Wu et al, 2018: https://arxiv.org/pdf/1811.08201.pdf) implementation.
     This is taken from their implementation, we do not claim credit for this.
     """
-    def __init__(self, classes=19, channels=4, M=3, N= 21, dropout_flag = False):
+    def __init__(self, equivariant, classes=19, channels=4, M=3, N= 21, dropout_flag = False):
         """
         args:
           classes: number of classes in the dataset. Default is 19 for the cityscapes
@@ -180,9 +182,9 @@ class CGNetModule(nn.Module):
           N: the number of blocks in stage 3
         """
         super().__init__()
-        self.level1_0 = ConvBNPReLU(channels, 32, 3, 2)      # feature map size divided 2, 1/2
-        self.level1_1 = ConvBNPReLU(32, 32, 3, 1)                          
-        self.level1_2 = ConvBNPReLU(32, 32, 3, 1)      
+        self.level1_0 = ConvBNPReLU(equivariant, channels, 32, 3, 2)      # feature map size divided 2, 1/2
+        self.level1_1 = ConvBNPReLU(equivariant, 32, 32, 3, 1)                          
+        self.level1_2 = ConvBNPReLU(equivariant, 32, 32, 3, 1)      
 
         self.sample1 = InputInjection(1)  #down-sample for Input Injection, factor=2
         self.sample2 = InputInjection(2)  #down-sample for Input Injiection, factor=4
@@ -190,24 +192,24 @@ class CGNetModule(nn.Module):
         self.b1 = BNPReLU(32 + channels)
         
         #stage 2
-        self.level2_0 = ContextGuidedBlock_Down(32 + channels, 64, dilation_rate=2,reduction=8)  
+        self.level2_0 = ContextGuidedBlock_Down(equivariant, 32 + channels, 64, dilation_rate=2,reduction=8)  
         self.level2 = nn.ModuleList()
         for i in range(0, M-1):
-            self.level2.append(ContextGuidedBlock(64 , 64, dilation_rate=2, reduction=8))  #CG block
+            self.level2.append(ContextGuidedBlock(equivariant, 64 , 64, dilation_rate=2, reduction=8))  #CG block
         self.bn_prelu_2 = BNPReLU(128 + channels)
         
         #stage 3
-        self.level3_0 = ContextGuidedBlock_Down(128 + channels, 128, dilation_rate=4, reduction=16) 
+        self.level3_0 = ContextGuidedBlock_Down(equivariant, 128 + channels, 128, dilation_rate=4, reduction=16) 
         self.level3 = nn.ModuleList()
         for i in range(0, N-1):
-            self.level3.append(ContextGuidedBlock(128 , 128, dilation_rate=4, reduction=16)) # CG block
+            self.level3.append(ContextGuidedBlock(equivariant, 128 , 128, dilation_rate=4, reduction=16)) # CG block
         self.bn_prelu_3 = BNPReLU(256)
 
         if dropout_flag:
             print("have droput layer")
-            self.classifier = nn.Sequential(nn.Dropout2d(0.1, False),Conv(256, classes, 1, 1))
+            self.classifier = nn.Sequential(nn.Dropout2d(0.1, False),Conv(equivariant, 256, classes, 1, 1))
         else:
-            self.classifier = nn.Sequential(Conv(256, classes, 1, 1))
+            self.classifier = nn.Sequential(Conv(equivariant, 256, classes, 1, 1))
 
         #init weights
         for m in self.modules():
@@ -216,10 +218,6 @@ class CGNetModule(nn.Module):
                 nn.init.kaiming_normal_(m.weight)
                 if m.bias is not None:
                     m.bias.data.zero_()
-                elif classname.find('ConvTranspose2d')!= -1:
-                    nn.init.kaiming_normal_(m.weight)
-                    if m.bias is not None:
-                        m.bias.data.zero_()
 
     def forward(self, input):
         """

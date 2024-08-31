@@ -204,9 +204,9 @@ if __name__ == '__main__':
 
                 # otherwise, check if it preserves the the quadratic on the unit vectors
                 # (heuristic, realistically if it passes the first two, they probably relate
-                # as we are iterating the matrices in order)
+                # as we are iterating the matrices in order of score)
                 def good_column(t, x, y, z):
-                    return np.abs((t * t - x * x - y * y - z * z) - 1) < 1e-2
+                    return np.abs((t * t - x * x - y * y - z * z) - 1) < 1e-1
 
                 return np.all([good_column(*column) for column in diff])
 

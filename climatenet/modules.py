@@ -7,6 +7,40 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+class GLConv2d(nn.Module):
+    def __init__(self, equivariant, n_in, n_out, k_size, stride=1, bias=True, groups=1, dilation=1):
+        super().__init__()
+
+        if equivariant:
+            self.weight = nn.Parameter(torch.empty(n_out, n_in // groups))
+        else:
+            self.weight = nn.Parameter(torch.empty(n_out, n_in // groups, *k_size))
+
+        if bias:
+            self.b = nn.Parameter(torch.empty(n_out))
+        else:
+            self.bias = None
+
+        self.equivariant = equivariant
+        self.stride = stride
+        self.groups = groups
+        self.dilation = dilation
+        self.k_size = k_size
+
+    def forward(self, x):
+        if self.equivariant:
+            weight = self.weight.unsqueeze(2).unsqueeze(3).expand(*self.weight.shape, *self.k_size)
+        else:
+            weight = self.weight
+
+        return torch.nn.functional.conv2d(
+            x, weight,
+            bias=self.bias,
+            stride=self.stride,
+            groups=self.groups,
+            dilation=self.dilation
+        )
+
 class Wrap(torch.nn.Module):
 
     def __init__(self, padding):
@@ -18,7 +52,7 @@ class Wrap(torch.nn.Module):
         return F.pad(x, (self.p,)*4 , mode='circular')
 
 class ConvBNPReLU(nn.Module):
-    def __init__(self, nIn, nOut, kSize, stride=1):
+    def __init__(self, equivariant, nIn, nOut, kSize, stride=1):
         """
         args:
             nIn: number of input channels
@@ -27,10 +61,9 @@ class ConvBNPReLU(nn.Module):
             stride: stride rate for down-sampling. Default is 1
         """
         super().__init__()
-        #self.conv = nn.Conv2d(nIn, nOut, (kSize, kSize), stride=stride, padding=(padding,padding), bias=False)
         padding = int((kSize - 1)/2)
         self.padding = Wrap(padding=padding)
-        self.conv = nn.Conv2d(nIn, nOut, (kSize, kSize), stride=stride, bias=False)
+        self.conv = GLConv2d(equivariant, nIn, nOut, (kSize, kSize), stride=stride, bias=False)
         self.bn = nn.BatchNorm2d(nOut, eps=1e-03)
         self.act = nn.PReLU(nOut)
 
@@ -68,7 +101,7 @@ class BNPReLU(nn.Module):
         return output
 
 class ConvBN(nn.Module):
-    def __init__(self, nIn, nOut, kSize, stride=1):
+    def __init__(self, equivariant, nIn, nOut, kSize, stride=1):
         """
         args:
            nIn: number of input channels
@@ -79,8 +112,7 @@ class ConvBN(nn.Module):
         super().__init__()
         padding = int((kSize - 1)/2)
         self.padding = Wrap(padding=padding)
-        self.conv = nn.Conv2d(nIn, nOut, (kSize, kSize), stride=stride, bias=False)
-        #elf.conv = nn.Conv2d(nIn, nOut, (kSize, kSize), stride=stride, padding=(padding, padding), padding_mode="circular", bias=False)
+        self.conv = GLConv2d(equivariant, nIn, nOut, (kSize, kSize), stride=stride, bias=False)
         self.bn = nn.BatchNorm2d(nOut, eps=1e-03)
 
     def forward(self, input):
@@ -95,7 +127,7 @@ class ConvBN(nn.Module):
         return output
 
 class Conv(nn.Module):
-    def __init__(self, nIn, nOut, kSize, stride=1):
+    def __init__(self, equivariant, nIn, nOut, kSize, stride=1):
         """
         args:
             nIn: number of input channels
@@ -106,8 +138,7 @@ class Conv(nn.Module):
         super().__init__()
         padding = int((kSize - 1)/2)
         self.padding = Wrap(padding=padding)
-        self.conv = nn.Conv2d(nIn, nOut, (kSize, kSize), stride=stride, bias=False)
-        #self.conv = nn.Conv2d(nIn, nOut, (kSize, kSize), stride=stride, padding=(padding, padding), padding_mode="circular", bias=False)
+        self.conv = GLConv2d(equivariant, nIn, nOut, (kSize, kSize), stride=stride, bias=False)
 
     def forward(self, input):
         """
@@ -120,7 +151,7 @@ class Conv(nn.Module):
         return output
 
 class ChannelWiseConv(nn.Module):
-    def __init__(self, nIn, nOut, kSize, stride=1):
+    def __init__(self, equivariant, nIn, nOut, kSize, stride=1):
         """
         Args:
             nIn: number of input channels
@@ -131,8 +162,7 @@ class ChannelWiseConv(nn.Module):
         super().__init__()
         padding = int((kSize - 1)/2)
         self.padding = Wrap(padding=padding)
-        self.conv = nn.Conv2d(nIn, nOut, (kSize, kSize), stride=stride, groups=nIn, bias=False)
-        #self.conv = nn.Conv2d(nIn, nOut, (kSize, kSize), stride=stride, padding=(padding, padding), groups=nIn, padding_mode="circular", bias=False)
+        self.conv = GLConv2d(equivariant, nIn, nOut, (kSize, kSize), stride=stride, groups=nIn, bias=False)
 
     def forward(self, input):
         """
@@ -145,7 +175,7 @@ class ChannelWiseConv(nn.Module):
         return output
       
 class DilatedConv(nn.Module):
-    def __init__(self, nIn, nOut, kSize, stride=1, d=1):
+    def __init__(self, equivariant, nIn, nOut, kSize, stride=1, d=1):
         """
         args:
            nIn: number of input channels
@@ -157,8 +187,7 @@ class DilatedConv(nn.Module):
         super().__init__()
         padding = int((kSize - 1)/2) * d
         self.padding = Wrap(padding=padding)
-        self.conv = nn.Conv2d(nIn, nOut, (kSize, kSize), stride=stride, bias=False, dilation=d)
-        #self.conv = nn.Conv2d(nIn, nOut, (kSize, kSize), stride=stride, padding=(padding, padding), padding_mode="circular", bias=False, dilation=d)
+        self.conv = GLConv2d(equivariant, nIn, nOut, (kSize, kSize), stride=stride, bias=False, dilation=d)
 
     def forward(self, input):
         """
@@ -171,7 +200,7 @@ class DilatedConv(nn.Module):
         return output
 
 class ChannelWiseDilatedConv(nn.Module):
-    def __init__(self, nIn, nOut, kSize, stride=1, d=1):
+    def __init__(self, equivariant, nIn, nOut, kSize, stride=1, d=1):
         """
         args:
            nIn: number of input channels
@@ -183,8 +212,7 @@ class ChannelWiseDilatedConv(nn.Module):
         super().__init__()
         padding = int((kSize - 1)/2) * d
         self.padding = Wrap(padding=padding)
-        self.conv = nn.Conv2d(nIn, nOut, (kSize, kSize), stride=stride, groups=nIn, bias=False, dilation=d)
-        #self.conv = nn.Conv2d(nIn, nOut, (kSize, kSize), stride=stride, padding=(padding, padding), padding_mode="circular", groups= nIn, bias=False, dilation=d)
+        self.conv = GLConv2d(equivariant, nIn, nOut, (kSize, kSize), stride=stride, groups=nIn, bias=False, dilation=d)
 
     def forward(self, input):
         """
@@ -220,21 +248,21 @@ class ContextGuidedBlock_Down(nn.Module):
     """
     the size of feature map divided 2, (H,W,C)---->(H/2, W/2, 2C)
     """
-    def __init__(self, nIn, nOut, dilation_rate=2, reduction=16):
+    def __init__(self, equivariant, nIn, nOut, dilation_rate=2, reduction=16):
         """
         args:
            nIn: the channel of input feature map
            nOut: the channel of output feature map, and nOut=2*nIn
         """
         super().__init__()
-        self.conv1x1 = ConvBNPReLU(nIn, nOut, 3, 2)  #  size/2, channel: nIn--->nOut
+        self.conv1x1 = ConvBNPReLU(equivariant, nIn, nOut, 3, 2)  #  size/2, channel: nIn--->nOut
         
-        self.F_loc = ChannelWiseConv(nOut, nOut, 3, 1)
-        self.F_sur = ChannelWiseDilatedConv(nOut, nOut, 3, 1, dilation_rate)
+        self.F_loc = ChannelWiseConv(equivariant, nOut, nOut, 3, 1)
+        self.F_sur = ChannelWiseDilatedConv(equivariant, nOut, nOut, 3, 1, dilation_rate)
         
         self.bn = nn.BatchNorm2d(2*nOut, eps=1e-3)
         self.act = nn.PReLU(2*nOut)
-        self.reduce = Conv(2*nOut, nOut,1,1)  #reduce dimension: 2*nOut--->nOut
+        self.reduce = Conv(equivariant, 2*nOut, nOut,1,1)  #reduce dimension: 2*nOut--->nOut
         
         self.F_glo = FGlo(nOut, reduction)    
 
@@ -254,7 +282,7 @@ class ContextGuidedBlock_Down(nn.Module):
 
 
 class ContextGuidedBlock(nn.Module):
-    def __init__(self, nIn, nOut, dilation_rate=2, reduction=16, add=True):
+    def __init__(self, equivariant, nIn, nOut, dilation_rate=2, reduction=16, add=True):
         """
         args:
            nIn: number of input channels
@@ -263,9 +291,9 @@ class ContextGuidedBlock(nn.Module):
         """
         super().__init__()
         n= int(nOut/2)
-        self.conv1x1 = ConvBNPReLU(nIn, n, 1, 1)  #1x1 Conv is employed to reduce the computation
-        self.F_loc = ChannelWiseConv(n, n, 3, 1) # local feature
-        self.F_sur = ChannelWiseDilatedConv(n, n, 3, 1, dilation_rate) # surrounding context
+        self.conv1x1 = ConvBNPReLU(equivariant, nIn, n, 1, 1)  #1x1 Conv is employed to reduce the computation
+        self.F_loc = ChannelWiseConv(equivariant, n, n, 3, 1) # local feature
+        self.F_sur = ChannelWiseDilatedConv(equivariant, n, n, 3, 1, dilation_rate) # surrounding context
         self.bn_prelu = BNPReLU(nOut)
         self.add = add
         self.F_glo= FGlo(nOut, reduction)

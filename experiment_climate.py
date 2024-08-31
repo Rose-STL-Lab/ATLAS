@@ -3,7 +3,6 @@ import torch.nn as nn
 from utils import get_device
 from local_symmetry import Predictor, LocalTrainer
 from group_basis import GroupBasis
-from ff_transformer import SingletonFFTransformer
 from config import Config
 from climatenet.utils.data import ClimateDatasetLabeled, ClimateDataset
 from climatenet.models import CGNet, CGNetModule
@@ -13,13 +12,25 @@ from ff import R2FeatureField
 from os import path
 from torch.utils.data import DataLoader
 from torch.optim import Adam
+import math
 import tqdm
 import numpy as np
 
 device = get_device()
 
-IN_RAD = 350
-OUT_RAD = 200
+IN_RAD = 200
+OUT_RAD = 150
+
+class ClimateFeatureField(R2FeatureField):
+    def __init__(self, data):
+        super().__init__(data)
+
+        c = self.data.shape[-1]
+        r = self.data.shape[-2]
+        mid_c = self.data.shape[-1] // 2
+        locs = [(r * 0.4, c * 0.5), (r * 0.5, c * 0.5), (r * 0.6, c * 0.5)]
+
+        self.locs = [(int(r), int(c)) for r, c in locs]
 
 class ClimatePredictor(Predictor):
     def __init__(self, config):
@@ -68,7 +79,7 @@ class ClimateTorchDataset:
         y_onehot[torch.tensor(y.values), i, j] = 1
         return torch.tensor(x.values).to(device).squeeze(0), y_onehot
 
-if __name__ == '__main__':
+def discover():
     train_path = './data/climate'
 
     config = Config()
@@ -94,5 +105,37 @@ if __name__ == '__main__':
 
     dataset = ClimateTorchDataset(path.join(train_path, 'train'), config)
 
-    gdn = LocalTrainer(R2FeatureField, predictor, basis, dataset, config)   
+    gdn = LocalTrainer(ClimateFeatureField, predictor, basis, dataset, config)   
     gdn.train()
+
+def train(equivariant):
+    train_path = './data/climate/train'
+    test_path = './data/climate/test'
+
+    config = Config()
+    config.fields = {"TMQ": {"mean": 19.21859, "std": 15.81723}, 
+                     "U850": {"mean": 1.55302, "std": 8.29764},
+                     "V850": {"mean": 0.25413, "std": 6.23163},
+                     "PSL": {"mean": 100814.414, "std": 1461.2227} 
+                    }
+    # from https://github.com/andregraubner/ClimateNet/blob/main/config.json
+    config.labels = ["Background", "Tropical Cyclone", "Atmospheric River"]
+    config.label_length = 3 
+    config.field_length = len(config.fields)
+    config.lr = 0.001
+    config.train_batch_size = 4
+    config.pred_batch_size = 8
+
+    train_dataset = ClimateDatasetLabeled(train_path, config)
+    test_dataset = ClimateDatasetLabeled(test_path, config)
+
+    model = CGNet(equivariant, device, config)
+    model.train(train_dataset)
+    model.evaluate(test_dataset)
+
+
+if __name__ == '__main__':
+    # discover()
+
+    train(False)
+    # train(True)

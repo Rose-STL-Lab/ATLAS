@@ -11,11 +11,14 @@ from config import Config
 import torchvision
 from torchvision import datasets, transforms
 
+device = get_device()
+
 IN_RAD = 14
 OUT_RAD = 14
-NUM_CLASS = 10
+# background is not very important
+CLASS_WEIGHTS = torch.tensor([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0.1], device=device)
+NUM_CLASS = len(CLASS_WEIGHTS)
 
-device = get_device()
 
 class MNISTFeatureField(R2FeatureField):
     def __init__(self, data):
@@ -121,7 +124,7 @@ class MNISTPredictor(nn.Module, Predictor):
     def loss(self, xx, yy):
         xx = xx.permute(0, 1, 3, 4, 2).flatten(0, 3)
         yy = yy.permute(0, 1, 3, 4, 2).flatten(0, 3)
-        return nn.functional.cross_entropy(xx, yy).to(device)
+        return nn.functional.cross_entropy(xx, yy, weight=CLASS_WEIGHTS).to(device)
 
     def name(self):
         return "mnist"
@@ -152,35 +155,37 @@ class MNISTDataset(torch.utils.data.Dataset):
 
         for i in range(N):
             j = [h(i) % N, (h(i) + 1) % N, (h(i) + 2) % N]
-            starts = [(int(self.w / 6) - 14, 0), (int(self.w / 2) - 14, 0), (int(self.w * 5 / 6) - 14, 0)]
+            starts = [(int(self.w / 6), 16), (int(self.w / 2), 16), (int(self.w * 5 / 6), 16)]
 
             # x_flat/y_flat represent the digits on a cylinder
             # we then project onto the sphere (equirectangular)
-            x_flat = torch.zeros(1, self.w, 28, device=device)
-            y_flat = torch.zeros(NUM_CLASS, self.w, 28, device=device)
+            x_flat = torch.zeros(1, self.w, 32, device=device)
+            y_flat = torch.zeros(NUM_CLASS, self.w, 32, device=device)
 
-            for jp, (r, c) in zip(j, starts):
+            for jp, (r, c) in list(zip(j, starts))[1:2]:
                 theta = h(i + jp) % (2 * rotate) - rotate if rotate else 0
                 x, y = self.dataset[jp]
                 x_curr = torchvision.transforms.functional.rotate(x, theta)
-                x_curr = torch.max(x_curr, torch.tensor(0.1))
+                x_flat[:, r - 14 : r + 14, c - 14: c + 14] = x_curr
 
-                # we do a little more than 28 since otherwise the chart
-                # would have a null entry at the border, and then the rotation
-                # would be weird
-                # this is somewhat of a hack, but is largely unimportant
-                p = 2 * IN_RAD + 1
-                y_curr = torch.zeros(NUM_CLASS, p, 28)
+                p = 32
+                y_curr = torch.zeros(NUM_CLASS, p, p)
 
                 y_curr[y] = 1
 
-                x_flat[:, r: r + 28, c: c + 28] = x_curr
-                y_flat[:, r: r + p, c: c + 28] = y_curr
+                y_flat[:, r - p // 2: r + p // 2, c - p // 2: c + p // 2] = y_curr
+
+            # only label pixels with white
+            y_flat *= (x_flat[0] != 0).unsqueeze(0)
 
 
             self.x[i] = self.project(x_flat)
-            # some y regions are unlabeled. We haven't seen this to cause issues
             self.y[i] = self.project(y_flat)
+
+            # label unlabelled regions as background
+            unlabeled = torch.sum(self.y[i], dim=0) == 0
+            self.y[i, 10][unlabeled] = 1
+
 
     # equirectangular nearest neighbor
     def project(self, cylinder):
@@ -257,7 +262,6 @@ def train(G):
 
     for e in range(config.epochs):
         total_loss = 0
-        total_acc = 0
         train_acc = 0
 
         model.train()
@@ -266,7 +270,7 @@ def train(G):
 
             y_pred = y_pred.permute(0, 2, 3, 1).flatten(0, 2)
             yy = yy.permute(0, 2, 3, 1).flatten(0, 2)
-            loss = torch.nn.functional.cross_entropy(y_pred, yy)
+            loss = torch.nn.functional.cross_entropy(y_pred, yy, weight=CLASS_WEIGHTS)
 
             valid = torch.sum(yy, dim=-1) != 0
             y_pred_ind = torch.max(y_pred, dim=-1, keepdim=True)[1][valid]
@@ -279,23 +283,97 @@ def train(G):
             loss.backward()
             optimizer.step()
 
-        model.eval()
-        for xx, yy in tqdm.tqdm(valid_loader):
-            y_pred = model(xx)
-
-            y_pred = y_pred.permute(0, 2, 3, 1).flatten(0, 2)
-            yy = yy.permute(0, 2, 3, 1).flatten(0, 2)
-
-            valid = torch.sum(yy, dim=-1) != 0
-            y_pred_ind = torch.max(y_pred, dim=-1, keepdim=True)[1][valid]
-            y_true_ind = torch.max(yy, dim=-1, keepdim=True)[1][valid]
-            total_acc += (y_pred_ind == y_true_ind).float().mean() / len(valid_loader)
-
         torch.save(model, 'predictors/mnist_' + G + '.pt')
-        print("Loss", total_loss, "Train Accuracy", train_acc, "Valid Accurary", total_acc)
+        print("Loss", total_loss, "Train Accuracy", train_acc)
 
+    total_acc = 0
+    model.eval()
+    for xx, yy in tqdm.tqdm(valid_loader):
+        y_pred = model(xx)
+
+        y_pred = y_pred.permute(0, 2, 3, 1).flatten(0, 2)
+        yy = yy.permute(0, 2, 3, 1).flatten(0, 2)
+
+        valid = torch.sum(yy, dim=-1) != 0
+        y_pred_ind = torch.max(y_pred, dim=-1, keepdim=True)[1][valid]
+        y_true_ind = torch.max(yy, dim=-1, keepdim=True)[1][valid]
+        total_acc += (y_pred_ind == y_true_ind).float().mean() / len(valid_loader)
+
+    print("Test Accuracy", total_acc)
+
+def lie_gan_discover():
+    """
+        In general, since the y labels are squares on the sphere, we do not expect 
+        LieGan to be able to discover any (continuous) symmetries, since none exist
+    """
+    from baseline.SO3LieGan.gan import LieGenerator, LieDiscriminatorSegmentation
+    from baseline.SO3LieGan.train import train_lie_gan
+
+    config = Config()
+
+    so3_basis = torch.tensor([
+        [[0, -1, 0],
+         [1, 0, 0],
+         [0, 0, 0]],
+        [[0, 0, -1],
+         [0, 0, 0],
+         [1, 0, 0]],
+        [[0, 0, 0],
+         [0, 0, -1],
+         [0, 1, 0]]
+    ], device=device)
+
+
+    # transforms field by a SO3 rotation
+    def transform(g, x_in, is_y):
+        # theta phi for each point
+        max_theta = x_in.shape[-2]
+        max_phi = x_in.shape[-1]
+        theta = torch.arange(0, max_theta) / max_theta * 2 * math.pi
+        phi = torch.arange(0, max_phi) / max_phi * math.pi
+        theta, phi = torch.meshgrid(theta, phi, indexing='ij')
+
+        # x y z for each pixel
+        x = torch.sin(phi) * torch.cos(theta)
+        y = torch.sin(phi) * torch.sin(theta)
+        z = torch.cos(phi)
+        xyz = torch.stack((x, y, z), dim=-1)
+
+
+        # inverted x y z for each pixel
+        xyz_inv = torch.einsum('bvw, ijw -> bijv', torch.inverse(g), xyz)
+
+        # mapped theta phi for each pixel
+        tau = 2 * math.pi
+        theta_inv = (torch.atan2(xyz_inv[..., 1], xyz_inv[..., 0]) + tau) % tau / tau
+        theta_inv[theta_inv.isnan()] = 0
+        theta_inv = 2 * theta_inv - 1
+
+        # floating point error
+        phi_inv = (torch.acos(xyz_inv[..., 2].clamp(-0.9999, 0.9999)) / math.pi) 
+        phi_inv = 2 * phi_inv - 1
+        theta_phi_inv = torch.stack((phi_inv, theta_inv), dim=-1)
+
+        # sampled 
+        if is_y:
+            ret = torch.nn.functional.grid_sample(x_in, theta_phi_inv, mode='nearest', align_corners=False) 
+        else:
+            ret = torch.nn.functional.grid_sample(x_in, theta_phi_inv, mode='bilinear', align_corners=False) 
+
+        return ret
+
+    generator = LieGenerator(1, transform, so3_basis).to(device)
+    discriminator = LieDiscriminatorSegmentation(1, 768, NUM_CLASS).to(device)
+
+    dataset = MNISTDataset(config.N, rotate = 60)
+    loader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
+
+    train_lie_gan(generator, discriminator, loader, config.epochs, 5e-5, 2e-3, 'cosine', 1e-2, 2, 0.0, 1.0, device, print_every=1)
 
 if __name__ == '__main__':
-    discover()
+    # discover()
+
+    lie_gan_discover()
+
     # train('trivial')
     # train('so2')
