@@ -45,7 +45,7 @@ class ClassPredictor(Predictor):
 
 
 class TopTagging(torch.utils.data.Dataset):
-    def __init__(self, N, path='./data/top-tagging/train.h5', flatten=False, n_component=2, noise=0.0):
+    def __init__(self, path='./data/top-tagging/train.h5', flatten=False, n_component=2, noise=0.0):
         super().__init__()
         df = pd.read_hdf(path, key='table')
         df = df.to_numpy()
@@ -56,10 +56,9 @@ class TopTagging(torch.utils.data.Dataset):
         self.len = self.X.shape[0]
 
         self.y = torch.LongTensor(df[:, -1]).to(device)
-        self.N = N
 
     def __len__(self):
-        return min(self.N, self.len)
+        return self.len
 
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
@@ -76,7 +75,7 @@ if __name__ == '__main__':
 
     config = Config()
 
-    dataset = TopTagging(config.N, n_component=n_component)
+    dataset = TopTagging(n_component=n_component)
     loader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
 
     if config.reuse_predictor:

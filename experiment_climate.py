@@ -32,21 +32,29 @@ class ClimateFeatureField(R2FeatureField):
 
         self.locs = [(int(r), int(c)) for r, c in locs]
 
-class ClimatePredictor(Predictor):
+class ClimatePredictor(torch.nn.Module, Predictor):
     def __init__(self, config):
         super().__init__()
-        self.network = CGNetModule(classes=config.label_length, channels=config.field_length).to(device)
-        self.optimizer = Adam(self.network.parameters(), lr=1e-3)   
+
+        # predictor for each chart
+        self.network1 = CGNetModule(False, classes=config.label_length, channels=config.field_length).to(device)
+        self.network2 = CGNetModule(False, classes=config.label_length, channels=config.field_length).to(device)
+        self.network3 = CGNetModule(False, classes=config.label_length, channels=config.field_length).to(device)
+        self.optimizer = Adam(self.parameters(), lr=1e-3)   
 
     def run(self, x):
-        ret = self.network(torch.flatten(x, 0, 1)).unflatten(0, x.shape[:2])
+        chart_ret = []
+        for i, net in enumerate([self.network1, self.network2, self.network3]):
+            ret = net(x[:, i])
 
-        # clip to the out radius in the case that it's smaller than in radius
-        mid_r = x.shape[-2] // 2
-        mid_c = x.shape[-1] // 2
-        ret = ret[:, :, :, mid_r - OUT_RAD : mid_r + OUT_RAD + 1, mid_c - OUT_RAD : mid_c + OUT_RAD + 1]
+            # clip to the out radius in the case that it's smaller than in radius
+            mid_r = x.shape[-2] // 2
+            mid_c = x.shape[-1] // 2
+            ret = ret[:, :, mid_r - OUT_RAD : mid_r + OUT_RAD + 1, mid_c - OUT_RAD : mid_c + OUT_RAD + 1]
 
-        return ret
+            chart_ret.append(ret)
+
+        return torch.stack(chart_ret, dim=1)
     
     def loss(self, y_pred, y_true):
         y_pred = y_pred.permute(0, 1, 3, 4, 2).flatten(0, 3)
@@ -131,13 +139,12 @@ def train(equivariant):
     test_dataset = ClimateDatasetLabeled(test_path, config)
 
     model = CGNet(equivariant, device, config)
-
     model.train(train_dataset)
     model.evaluate(test_dataset)
 
 
 if __name__ == '__main__':
-    # discover()
+    discover()
 
-    train(True)
+    # train(False)
     # train(True)
