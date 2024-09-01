@@ -82,10 +82,7 @@ if __name__ == '__main__':
     if config.reuse_predictor:
         predictor = torch.load('predictors/toptag.pt')
     else:
-        print("Disabled right now")
-        exit(1)
-
-        print("Training Predictor (once finished, run with --reuse_predictor to train with predictor)")
+        print("Training Predictor (once finished, run with --reuse_predictor to discover with predictor)")
         predictor = ClassPredictor(n_dim, n_component, n_class)
 
         for e in range(config.epochs):

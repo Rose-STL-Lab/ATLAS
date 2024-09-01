@@ -162,7 +162,7 @@ class MNISTDataset(torch.utils.data.Dataset):
             x_flat = torch.zeros(1, self.w, 32, device=device)
             y_flat = torch.zeros(NUM_CLASS, self.w, 32, device=device)
 
-            for jp, (r, c) in list(zip(j, starts))[1:2]:
+            for jp, (r, c) in list(zip(j, starts)):
                 theta = h(i + jp) % (2 * rotate) - rotate if rotate else 0
                 x, y = self.dataset[jp]
                 x_curr = torchvision.transforms.functional.rotate(x, theta)
@@ -368,7 +368,7 @@ def lie_gan_discover():
     dataset = MNISTDataset(config.N, rotate = 60)
     loader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
 
-    train_lie_gan(generator, discriminator, loader, config.epochs, 5e-5, 2e-3, 'cosine', 1e-2, 2, 0.0, 1.0, device, print_every=1)
+    train_lie_gan(generator, discriminator, loader, config.epochs, 2e-4, 5e-4, 'cosine', 1e-2, 2, 0.0, 1.0, device, print_every=1)
 
 if __name__ == '__main__':
     # discover()

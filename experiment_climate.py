@@ -109,6 +109,7 @@ def discover():
     gdn.train()
 
 def train(equivariant):
+    print("Using equivariant model:", equivariant)
     train_path = './data/climate/train'
     test_path = './data/climate/test'
 
@@ -130,6 +131,7 @@ def train(equivariant):
     test_dataset = ClimateDatasetLabeled(test_path, config)
 
     model = CGNet(equivariant, device, config)
+
     model.train(train_dataset)
     model.evaluate(test_dataset)
 
@@ -137,5 +139,5 @@ def train(equivariant):
 if __name__ == '__main__':
     # discover()
 
-    train(False)
+    train(True)
     # train(True)
