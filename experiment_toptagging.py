@@ -69,7 +69,7 @@ if __name__ == '__main__':
     n_dim = 4
     n_component=30
     n_class = 2
-    max_discrete = 4
+    max_discrete = 2
     ortho_factor = 0.1
     growth_factor = 1
 
@@ -200,7 +200,7 @@ if __name__ == '__main__':
 
                 # otherwise, check if it preserves the the quadratic on the unit vectors
                 # (heuristic, realistically if it passes the first two, they probably relate
-                # as we are iterating the matrices in order of score)
+                # as we are iterating the matrices in order of score, but solutions are always only approximate)
                 def good_column(t, x, y, z):
                     return np.abs((t * t - x * x - y * y - z * z) - 1) < 1e-1
 
@@ -220,7 +220,7 @@ if __name__ == '__main__':
                         break
                 else:
                     final.append(mat)
-            print("Final Discrete Matrices")
+            print("2 Best Final Discrete Matrices")
             for tensor in final:
-                print(tensor)
+                print(tensor, "determinant", torch.det(tensor))
 
