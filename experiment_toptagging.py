@@ -157,7 +157,7 @@ if __name__ == '__main__':
         for xx, yy in tqdm.tqdm(loader):
             det = torch.abs(torch.det(matrices).unsqueeze(-1).unsqueeze(-1))
             normalized = matrices / (det ** 0.25)
-            g_x = torch.einsum('pij, bcj -> pbci', normalized, xx)
+            g_x = torch.einsum('pij, bcj -> pbci', normalized.to(device), xx)
             x = xx.unsqueeze(0).expand(g_x.shape)
 
             # p b 2
