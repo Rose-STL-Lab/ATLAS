@@ -9,8 +9,6 @@ class Config:
         parser.add_argument('--bs', type=int, default=16, help='batch size')
         parser.add_argument('--epochs', type=int, default=100)
         parser.add_argument('--N', type=int, default=20000, help='for randomly generated datasets, the number of elements to generate')
-        parser.add_argument('--num_pops', type=int, default=12, help='number of populations to use in genetic algorithm')
-        parser.add_argument('--pop_size', type=int, default=100, help='size of each population in the genetic algorithm')
         parser.add_argument('--reuse_predictor', default=False, action='store_true')
         parser.add_argument('--skip_continuous', default=False, action='store_true', help='for top tagging, skip infinitesimal generators')
         args = parser.parse_args()
@@ -23,7 +21,4 @@ class Config:
         self.device = get_device()
 
         self.skip_continuous = args.skip_continuous
-
-        self.num_pops = args.num_pops
-        self.pop_size = args.pop_size
 

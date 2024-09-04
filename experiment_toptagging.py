@@ -69,7 +69,7 @@ if __name__ == '__main__':
     n_dim = 4
     n_component=30
     n_class = 2
-    max_discrete = 2
+    max_discrete = 4
     ortho_factor = 0.1
     growth_factor = 1
 
@@ -198,6 +198,8 @@ if __name__ == '__main__':
                 if diff[0][0] < 0:
                     return False
 
+                return True
+                """
                 # otherwise, check if it preserves the the quadratic on the unit vectors
                 # (heuristic, realistically if it passes the first two, they probably relate
                 # as we are iterating the matrices in order of score, but solutions are always only approximate)
@@ -205,6 +207,7 @@ if __name__ == '__main__':
                     return np.abs((t * t - x * x - y * y - z * z) - 1) < 1e-1
 
                 return np.all([good_column(*column) for column in diff])
+                """
 
             # print out 4 highest matrices that do not relate (by SO+(1, 3)) to one another
             # This dataset does not have any time reversal, so we cannot find P or PT
