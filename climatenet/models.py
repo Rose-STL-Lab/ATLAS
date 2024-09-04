@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from climatenet.modules import *
 from climatenet.utils.data import ClimateDataset, ClimateDatasetLabeled
 from climatenet.utils.losses import jaccard_loss
-from climatenet.utils.metrics import get_cm, get_iou_perClass
+from climatenet.utils.metrics import get_cm, get_iou_perClass, get_cm_avg
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from tqdm import tqdm
@@ -65,7 +65,7 @@ class CGNet():
 
         self.optimizer = Adam(self.network.parameters(), lr=self.config.lr)        
         
-    def train(self, dataset: ClimateDatasetLabeled):
+    def train(self, dataset: ClimateDatasetLabeled, timestamp_dataset=None):
         '''Train the network on the given dataset for the given amount of epochs'''
         self.network.train()
         collate = ClimateDatasetLabeled.collate
@@ -77,7 +77,8 @@ class CGNet():
             aggregate_cm = np.zeros((3,3))
 
             for features, labels in epoch_loader:
-        
+                timestamps = features.coords['time'].values.tolist()
+
                 # Push data on GPU and pass forward
                 features = torch.tensor(features.values).to(self.device)
                 labels = torch.tensor(labels.values).to(self.device)
@@ -86,7 +87,11 @@ class CGNet():
 
                 # Update training CM
                 predictions = torch.max(outputs, 1)[1]
-                aggregate_cm += get_cm(predictions, labels, 3)
+
+                if timestamp_dataset:
+                    aggregate_cm += get_cm_avg(predictions, 3, timestamps, timestamp_dataset, self.device)
+                else:
+                    aggregate_cm += get_cm(predictions, labels, 3)
 
                 # Pass backward
                 loss = jaccard_loss(outputs, labels)
@@ -124,7 +129,7 @@ class CGNet():
 
         return xr.concat(predictions, dim='time')
 
-    def evaluate(self, dataset: ClimateDatasetLabeled):
+    def evaluate(self, dataset: ClimateDatasetLabeled, timestamp_dataset=None):
         '''Evaluate on a dataset and return statistics'''
         self.network.eval()
         collate = ClimateDatasetLabeled.collate
@@ -134,14 +139,18 @@ class CGNet():
         aggregate_cm = np.zeros((3,3))
 
         for features, labels in epoch_loader:
-        
+            timestamps = features.coords['time'].values.tolist()
             features = torch.tensor(features.values).to(self.device)
             labels = torch.tensor(labels.values).to(self.device)
                 
             with torch.no_grad():
                 outputs = torch.softmax(self.network(features), 1)
             predictions = torch.max(outputs, 1)[1]
-            aggregate_cm += get_cm(predictions, labels, 3)
+            
+            if timestamp_dataset:
+                aggregate_cm += get_cm_avg(predictions, 3, timestamps, timestamp_dataset, self.device)
+            else:
+                aggregate_cm += get_cm(predictions, labels, 3)
 
         print('Evaluation stats:')
         print(aggregate_cm)

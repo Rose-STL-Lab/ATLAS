@@ -4,7 +4,7 @@ from utils import get_device
 from local_symmetry import Predictor, LocalTrainer
 from group_basis import GroupBasis
 from config import Config
-from climatenet.utils.data import ClimateDatasetLabeled, ClimateDataset
+from climatenet.utils.data import ClimateDatasetLabeled, ClimateDataset, get_timestamp_dataset
 from climatenet.models import CGNet, CGNetModule
 from climatenet.utils.losses import jaccard_loss
 from climatenet.utils.metrics import get_cm, get_iou_perClass
@@ -116,7 +116,7 @@ def discover():
     gdn = LocalTrainer(ClimateFeatureField, predictor, basis, dataset, config)   
     gdn.train()
 
-def train(equivariant):
+def train(equivariant, newIOU):
     print("Using equivariant model:", equivariant)
     train_path = './data/climate/train'
     test_path = './data/climate/test'
@@ -137,14 +137,21 @@ def train(equivariant):
 
     train_dataset = ClimateDatasetLabeled(train_path, config)
     test_dataset = ClimateDatasetLabeled(test_path, config)
+    
+    date_train_dataset = None
+    date_test_dataset = None
+    if newIOU:
+        date_train_dataset = get_timestamp_dataset(train_dataset)
+        date_test_dataset = get_timestamp_dataset(test_dataset)
 
     model = CGNet(equivariant, device, config)
-    model.train(train_dataset)
-    model.evaluate(test_dataset)
+    model.train(train_dataset, date_train_dataset)
+    model.evaluate(test_dataset, date_test_dataset)
 
 
 if __name__ == '__main__':
-    discover()
+    #discover()
 
-    # train(False)
+    # equivariant = True, newIOU = True
+    train(True, True)
     # train(True)
