@@ -75,73 +75,14 @@ class ClimateDatasetLabeled(ClimateDataset):
         data, labels = map(list, zip(*batch))
         return xr.concat(data, dim='time'), xr.concat(labels, dim='time')
 
+def get_timestamp_dataset(dataset):
 
-## New Dataset for local symmetry
-class ClimateNeighborDataset(ClimateDataset):
-    '''
-    Attributes
-    ----------
-    chart_size : int
-        height, width of the chart
-    num_chart : int
-        Number of charts in the atlas
-    '''
-
-    def __init__(self, path: str, fields, chart_size, num_chart):
-        self.path: str = path
-        self.fields: dict = fields
-        
-        self.files: [str] = [f for f in sorted(listdir(self.path)) if f[-3:] == ".nc"]
-        self.length: int = len(self.files)
-        self.chart_size = chart_size
-        self.num_chart = num_chart
-        self.charts = self.generate_charts(self.chart_size, self.num_chart)
-
-    def generate_charts(self, chart_size, num_chart):
-        pairs = []
-        for _ in range(num_chart):
-            r = rand.randint(0, 768-chart_size)
-            c = rand.randint(0, 1152-chart_size)
-            pairs.append((r, c))
-        return pairs
-
-    def get_features(self, dataset: xr.Dataset, labels):
-        features = dataset[list(self.fields)].to_array()
-        self.normalize(features)
-        features = features.transpose('time', 'variable', 'lat', 'lon')
-
-        # size of (1, length of variable, number of charts, chart_size, chart_size)
-        new_features = np.zeros((len(features['time']), len(features['variable']), self.num_chart, self.chart_size, self.chart_size))
-
-        for i in range(len(features['variable'])):
-            variable = features[0, i, :, :]
-
-            for j, (r,c) in enumerate(self.charts):
-                new_features[0, i, j] = variable[r:r+self.chart_size, c:c+self.chart_size].values
-
-        time = features['time'].values
-        variables = features['variable'].values
-        chart = list(range(self.num_chart))
-        temp_lat = temp_lon = list(range(self.chart_size))
-        atlas_feature = xr.DataArray(new_features, coords=[time, variables, chart, temp_lat, temp_lon], dims=['time', 'variable', 'chart', 'lat', 'lon'])
-
-        # size of (number of charts, chart_size, chart_size)
-        new_labels = []
-        for (r,c) in self.charts:
-            new_labels.append(labels[r:r+self.chart_size, c:c+self.chart_size].values)
-            #new_labels.append(labels.values)
-
-        atlas_label = xr.DataArray(new_labels, coords=[chart, temp_lat, temp_lon], dims=['chart', 'lat', 'lon'])
-
-        return atlas_feature, atlas_label
-
-    # Return an array of charts
-    def __getitem__(self, idx: int):
-        file_path: str = path.join(self.path, self.files[idx]) 
-        dataset = xr.load_dataset(file_path)
-        return self.get_features(dataset, dataset['LABELS'])
-
-    @staticmethod 
-    def collate(batch):
-        data, labels = map(list, zip(*batch))
-        return xr.concat(data, dim='time'), xr.concat(labels, dim='time')
+    data_dataset = {}
+    for x,y in dataset:
+        date = x['time'].values[0]
+        if date in data_dataset:
+            data_dataset[date].append(y)
+        else:
+            data_dataset[date] = [y]
+            
+    return data_dataset
