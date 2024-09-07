@@ -360,7 +360,8 @@ def train(use_gl, newIOU):
     date_test_dataset = get_ico_timestamp_dataset(test_dataset)
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size)
+    # single batch so we can collapse batches
+    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=40)
 
     def print_iou(cm):
         i, j = torch.meshgrid(torch.arange(3), torch.arange(3), indexing='ij')
