@@ -22,7 +22,7 @@ device = get_device()
 
 IN_RAD = 200
 OUT_RAD = 150
-ICO_RES = 5
+ICO_RES = 6
 
 # rather naive atlas (not even an atlas in this case): just three charts along equator
 class ClimateFeatureField(R2FeatureField):
@@ -122,9 +122,10 @@ class ClimateIcoDataset:
 
 # adapted from https://github.com/DavidDiazGuerra/icoCNN/blob/master/icoCNN/icoCNN.py
 class StrideConv(nn.Module):
-    def __init__(self, r, Cin, Cout, Rin, Rout=6, bias=True, smooth_vertices=False, stride=1):
+    def __init__(self, use_gl, r, Cin, Cout, Rin, Rout=6, bias=True, smooth_vertices=False, stride=1):
         super().__init__()
         assert Rin == 1 or Rin == 6
+        self.use_gl = use_gl
         self.r = r
         self.Cin = Cin
         self.Cout = Cout
@@ -137,9 +138,15 @@ class StrideConv(nn.Module):
         self.padding = PadIco(r, Rin, smooth_vertices=smooth_vertices)
 
         s = math.sqrt(2 / (3 * 3 * Cin * Rin))
-        self.weight = torch.nn.Parameter(s * torch.randn((Cout, Cin, Rin, 7)))  # s * torch.randn((Cout, Cin, Rin, 7))  #
+        if use_gl:
+            self.weight = torch.nn.Parameter(s * torch.randn((Cout, Cin, Rin, 6)))
+        else:
+            self.weight = torch.nn.Parameter(s * torch.randn((Cout, Cin, Rin, 7)))  # s * torch.randn((Cout, Cin, Rin, 7))  #
         if bias:
-            self.bias = torch.nn.Parameter(torch.zeros(Cout * Rout))
+            if use_gl:
+                self.bias = torch.nn.Parameter(torch.zeros(Cout * Rout))
+            else:
+                self.bias = torch.nn.Parameter(torch.zeros(Cout))
         else:
             self.register_parameter('bias', None)
 
@@ -147,19 +154,21 @@ class StrideConv(nn.Module):
         self.kernel_expansion_idx[..., 0] = torch.arange(Cout).reshape((Cout, 1, 1, 1, 1))
         self.kernel_expansion_idx[..., 1] = torch.arange(Cin).reshape((1, 1, Cin, 1, 1))
         idx_r = torch.arange(0, Rin)
-        idx_k = torch.Tensor(((5, 4, -1, 6, 0, 3, -1, 1, 2),
-                              (4, 3, -1, 5, 0, 2, -1, 6, 1),
-                              (3, 2, -1, 4, 0, 1, -1, 5, 6),
-                              (2, 1, -1, 3, 0, 6, -1, 4, 5),
-                              (1, 6, -1, 2, 0, 5, -1, 3, 4),
-                              (6, 5, -1, 1, 0, 4, -1, 2, 3)))
+        if use_gl:
+            idx_k = torch.Tensor(((0, 0, -1, 0, 0, 0, -1, 0, 0),
+                                  (1, 1, -1, 1, 1, 1, -1, 1, 1),
+                                  (2, 2, -1, 2, 2, 2, -1, 2, 2),
+                                  (3, 3, -1, 3, 3, 3, -1, 3, 3),
+                                  (4, 4, -1, 4, 4, 4, -1, 4, 4),
+                                  (5, 5, -1, 5, 5, 5, -1, 5, 5)))
+        else:
+            idx_k = torch.Tensor(((5, 4, -1, 6, 0, 3, -1, 1, 2),
+                                  (4, 3, -1, 5, 0, 2, -1, 6, 1),
+                                  (3, 2, -1, 4, 0, 1, -1, 5, 6),
+                                  (2, 1, -1, 3, 0, 6, -1, 4, 5),
+                                  (1, 6, -1, 2, 0, 5, -1, 3, 4),
+                                  (6, 5, -1, 1, 0, 4, -1, 2, 3)))
 
-        idx_k = torch.Tensor(((0, 0, -1, 0, 0, 0, -1, 0, 0),
-                              (1, 1, -1, 1, 1, 1, -1, 1, 1),
-                              (2, 2, -1, 2, 2, 2, -1, 2, 2),
-                              (3, 3, -1, 3, 3, 3, -1, 3, 3),
-                              (4, 4, -1, 4, 4, 4, -1, 4, 4),
-                              (5, 5, -1, 5, 5, 5, -1, 5, 5)))
         for i in range(Rout):
             self.kernel_expansion_idx[:, i, :, :, :, 2] = idx_r.reshape((1, 1, Rin, 1))
             self.kernel_expansion_idx[:, i, :, :, :, 3] = idx_k[i,:]
@@ -192,9 +201,11 @@ class StrideConv(nn.Module):
 
         kernel = self.get_kernel()
         kernel = einops.rearrange(kernel, 'Cout Rout Cin Rin Hk Wk -> (Cout Rout) (Cin Rin) Hk Wk', Hk=3, Wk=3)
-        # bias = einops.repeat(self.bias, 'Cout -> (Cout Rout)', Cout=self.Cout, Rout=self.Rout) \
-            # if self.bias is not None else None
-        bias = self.bias
+        if self.use_gl:
+            bias = self.bias
+        else:
+            bias = einops.repeat(self.bias, 'Cout -> (Cout Rout)', Cout=self.Cout, Rout=self.Rout) \
+                if self.bias is not None else None
 
         y = torch.nn.functional.conv2d(x, kernel, bias, padding=(1, 1), stride=self.stride)
         y = einops.rearrange(y, '... (C R) (charts H) W -> ... C R charts H W', C=self.Cout, R=self.Rout, charts=5)
@@ -212,13 +223,12 @@ class StrideConv(nn.Module):
 
             
 class GaugeDownLayer(nn.Module):
-    def __init__(self, r, c_in, c_out, r_in):
+    def __init__(self, use_gl, r, c_in, c_out, r_in):
         super().__init__()
 
         self.model = nn.Sequential(
-            StrideConv(r, c_in, c_out, r_in, stride=2),
+            StrideConv(use_gl, r, c_in, c_out, r_in, stride=2),
             LNormIco(c_out, 6),
-            # TODO tanh works but relu and sigmoid dont? must be about positiveness, but not sure why
             nn.Tanh()
         )
 
@@ -226,11 +236,11 @@ class GaugeDownLayer(nn.Module):
         return self.model(x)
 
 class GaugeUpLayer(nn.Module):
-    def __init__(self, r, old_c_in, c_in, c_out, activate=True):
+    def __init__(self, use_gl, r, old_c_in, c_in, c_out, activate=True):
         super().__init__()
 
         self.model = nn.Sequential(
-            StrideConv(r + 1, old_c_in + c_in, c_out, 6),
+            StrideConv(use_gl, r + 1, old_c_in + c_in, c_out, 6),
             LNormIco(c_out, 6),
         )
         self.lnorm = LNormIco(c_out, 6)
@@ -252,20 +262,26 @@ class GaugeUpLayer(nn.Module):
 
 
 class GaugeEquivariantCNN(nn.Module):
-    def __init__(self):
+    def __init__(self, use_gl):
         super().__init__()
 
         r = ICO_RES
+        def c(raw):
+            # give gl model slightly more channels to make up for lower parameter count
+            if use_gl:
+                return int(7 / 6 * raw)
+            else:
+                return raw
 
-        self.d1 = GaugeDownLayer(r - 0,  4, 16, 1)
-        self.d2 = GaugeDownLayer(r - 1, 16, 32, 6)
-        self.d3 = GaugeDownLayer(r - 2, 32, 64, 6)
-        self.d4 = GaugeDownLayer(r - 3, 64, 128, 6)
+        self.d1 = GaugeDownLayer(use_gl, r - 0,  4, c(16), 1)
+        self.d2 = GaugeDownLayer(use_gl, r - 1, c(16), c(32), 6)
+        self.d3 = GaugeDownLayer(use_gl, r - 2, c(32), c(64), 6)
+        self.d4 = GaugeDownLayer(use_gl, r - 3, c(64), c(128), 6)
 
-        self.u4 = GaugeUpLayer(r - 4, 64, 128, 64)
-        self.u3 = GaugeUpLayer(r - 3, 32, 64, 32)
-        self.u2 = GaugeUpLayer(r - 2, 16, 32, 16)
-        self.u1 = GaugeUpLayer(r - 1, 0, 16, 3, activate=False)
+        self.u4 = GaugeUpLayer(use_gl, r - 4, c(64), c(128), c(64))
+        self.u3 = GaugeUpLayer(use_gl, r - 3, c(32), c(64), c(32))
+        self.u2 = GaugeUpLayer(use_gl, r - 2, c(16), c(32), c(16))
+        self.u1 = GaugeUpLayer(use_gl, r - 1, 0, c(16), 3, activate=False)
 
 
     def forward(self, x):
@@ -336,8 +352,6 @@ def train(use_gl, newIOU):
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size, shuffle=True)
 
-
-
     def print_iou(cm):
         i, j = torch.meshgrid(torch.arange(3), torch.arange(3), indexing='ij')
         bg_iou = float(cm[0, 0] / torch.sum(cm[(i == 0) | (j == 0)]).detach().cpu())
@@ -345,11 +359,10 @@ def train(use_gl, newIOU):
         ar_iou = float(cm[2, 2] / torch.sum(cm[(i == 2) | (j == 2)]).detach().cpu())
         iou = torch.tensor([bg_iou, tc_iou, ar_iou]).mean()
         print("bg", bg_iou, "tc", tc_iou, "ar", ar_iou, "mean", iou)
+        print("confusion matrix", cm)
 
-    if use_gl:
-        model = GLEquivariantCNN().to(device)
-    else:
-        model = GaugeEquivariantCNN().to(device)
+    model = GaugeEquivariantCNN(use_gl).to(device)
+    print("Parameter count:", sum(p.numel() for p in model.parameters()))
 
     optim = torch.optim.Adam(model.parameters())
     for e in range(config.epochs):
@@ -425,111 +438,5 @@ if __name__ == '__main__':
     #discover()
 
     # use_gl = True, newIOU = True
-    train(False, True)
-
-class FlatConv(nn.Module):
-    def __init__(self, r, Cin, Cout, Rin, Rout=1, bias=True, smooth_vertices=False):
-        super().__init__()
-        self.r = r
-        self.Cin = Cin
-        self.Cout = Cout
-        self.Rin = Rin
-        self.Rout = Rout
-
-        self.process_vertices = SmoothVertices(r) if smooth_vertices else CleanVertices(r)
-        self.padding = PadIco(r, Rin, smooth_vertices=smooth_vertices)
-
-        s = math.sqrt(2 / (7 * Cin * Rin))
-        self.weight = torch.nn.Parameter(s * torch.randn((Cout, Cin, Rin, 2)))  # s * torch.randn((Cout, Cin, Rin, 7))  #
-
-        if bias:
-            self.bias = torch.nn.Parameter(torch.zeros(Cout))
-        else:
-            self.register_parameter('bias', None)
-
-        self.kernel_expansion_idx = torch.zeros((Cout, Rout, Cin, Rin, 9, 4), dtype=int)
-        self.kernel_expansion_idx[..., 0] = torch.arange(Cout).reshape((Cout, 1, 1, 1, 1))
-        self.kernel_expansion_idx[..., 1] = torch.arange(Cin).reshape((1, 1, Cin, 1, 1))
-        idx_r = torch.arange(0, Rin)
-        idx_k = torch.Tensor(((1, 1, -1, 1, 0, 1, -1, 1, 1),))
-        for i in range(Rout):
-            self.kernel_expansion_idx[:, i, :, :, :, 2] = idx_r.reshape((1, 1, Rin, 1))
-            self.kernel_expansion_idx[:, i, :, :, :, 3] = idx_k[i,:]
-            idx_r = idx_r.roll(1)
-
-    def get_kernel(self):
-        kernel = self.weight[self.kernel_expansion_idx[..., 0],
-                             self.kernel_expansion_idx[..., 1],
-                             self.kernel_expansion_idx[..., 2],
-                             self.kernel_expansion_idx[..., 3]]
-        kernel = kernel.reshape((self.Cout, self.Rout, self.Cin, self.Rin, 3, 3))
-        kernel[..., 0, 2] = 0
-        kernel[..., 2, 0] = 0
-        return kernel
-
-    def forward(self, x):
-        x = self.padding(x)
-        x = einops.rearrange(x, '... C R charts H W -> ... (C R) (charts H) W', C=self.Cin, R=self.Rin, charts=5)
-        batch_shape = x.shape[:-3]
-        x = x.reshape((-1,) + x.shape[-3:])
-
-        kernel = self.get_kernel()
-        kernel = einops.rearrange(kernel, 'Cout Rout Cin Rin Hk Wk -> (Cout Rout) (Cin Rin) Hk Wk', Hk=3, Wk=3)
-        bias = einops.repeat(self.bias, 'Cout -> (Cout Rout)', Cout=self.Cout, Rout=self.Rout) \
-            if self.bias is not None else None
-
-        y = torch.nn.functional.conv2d(x, kernel, bias, padding=(1, 1))
-        y = einops.rearrange(y, '... (C R) (charts H) W -> ... C R charts H W', C=self.Cout, R=self.Rout, charts=5)
-        y = y[..., 1:-1, 1:-1]
-        y = y.reshape(batch_shape + y.shape[1:])
-
-        return self.process_vertices(y)
-
-class FlatDownLayer(nn.Module):
-    def __init__(self, r, c_in, c_out):
-        super().__init__()
-
-        self.model = nn.Sequential(
-            FlatConv(r, c_in, c_out, 1),
-            LNormIco(c_out, 1),
-            PoolIco(r, 1),
-            nn.LeakyReLU()
-        )
-
-    def forward(self, x):
-        return self.model(x)
-
-class FlatUpLayer(nn.Module):
-    def __init__(self, r, c_in, c_out):
-        super().__init__()
-
-        self.model = nn.Sequential(
-            UnPoolIco(r, 1),
-            FlatConv(r + 1, c_in, c_out, 1),
-            LNormIco(c_out, 1),
-            nn.LeakyReLU()
-        )
-
-    def forward(self, x):
-        return self.model(x)
-
-class GLEquivariantCNN(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-        self.model = nn.Sequential(
-            FlatDownLayer(ICO_RES - 0,  4, 16 * 6),
-            FlatDownLayer(ICO_RES - 1, 16 * 6, 32 * 6),
-            FlatDownLayer(ICO_RES - 2, 32 * 6, 64 * 6),
-            FlatDownLayer(ICO_RES - 3, 64 * 6, 64 * 6),
-
-            FlatUpLayer(ICO_RES - 4, 64 * 6, 64 * 6),
-            FlatUpLayer(ICO_RES - 3, 64 * 6, 32 * 6),
-            FlatUpLayer(ICO_RES - 2, 32 * 6, 16 * 6),
-            FlatUpLayer(ICO_RES - 1, 16 * 6, 3),
-        )
-
-    def forward(self, x):
-        uncollapsed = self.model(x)
-        return torch.sum(uncollapsed, dim=-4)
+    train(True, True)
 
