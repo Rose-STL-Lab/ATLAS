@@ -360,7 +360,7 @@ def train(use_gl, newIOU):
     date_test_dataset = get_ico_timestamp_dataset(test_dataset)
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
-    # single batch so we can collapse batches
+    # single batch so same timestamp is not in different batches
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=40)
 
     def print_iou(cm):
@@ -405,22 +405,8 @@ def train(use_gl, newIOU):
             loss.backward()
             optim.step()
 
-        if newIOU:
-            print("Epoch", e, "Loss", np.mean(losses))
-            print(cm)
-            ious = get_iou_perClass(cm)
-            print('IOUs: ', ious, ', mean: ', ious.mean())
-        else:
-            print("Epoch", e, "Loss", np.mean(losses), "IOUs")
-            print_iou(cm / count)
-
-
-    from icoCNN.plots import icosahedral_charts
-    import matplotlib
-    icosahedral_charts(y_true_ind[0])
-    matplotlib.pyplot.show()
-    icosahedral_charts(y_pred_ind[0])
-    matplotlib.pyplot.show()
+        print("Epoch", e, "Loss", np.mean(losses))
+        print_iou(cm / count)
 
     model.eval()
 
@@ -441,37 +427,10 @@ def train(use_gl, newIOU):
                     cm[r, c] += torch.sum((y_true_ind == r) & (y_pred_ind == c))
             count += y_true_ind.numel()
 
-    if newIOU:
-        print(cm)
-        ious = get_iou_perClass(cm)
-        print('IOUs: ', ious, ', mean: ', ious.mean())
-    else:
-        print_iou(cm / count)
-
-    """
-    date_train_dataset = None
-    date_test_dataset = None
-    if newIOU:
-        date_train_dataset = get_timestamp_dataset(train_dataset)
-        date_test_dataset = get_timestamp_dataset(test_dataset)
-
-    model = CGNet(equivariant, device, config)
-    model.train(train_dataset, date_train_dataset)
-    model.evaluate(test_dataset, date_test_dataset)
-    """
+    print_iou(cm / count)
 
 
 if __name__ == '__main__':
-    train_path = './data/climate/train'
-    test_path = './data/climate/test'
-
-    config = Config()
-    config.fields = {"TMQ": {"mean": 19.21859, "std": 15.81723}, 
-                     "U850": {"mean": 1.55302, "std": 8.29764},
-                     "V850": {"mean": 0.25413, "std": 6.23163},
-                     "PSL": {"mean": 100814.414, "std": 1461.2227} 
-                    }
-
     #discover()
 
     # use_gl = True, newIOU = True
