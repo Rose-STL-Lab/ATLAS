@@ -75,14 +75,13 @@ class ClimateDatasetLabeled(ClimateDataset):
         data, labels = map(list, zip(*batch))
         return xr.concat(data, dim='time'), xr.concat(labels, dim='time')
 
-def get_timestamp_dataset(dataset):
-
+# for icocnn
+def get_ico_timestamp_dataset(dataset):
     data_dataset = {}
-    for x,y in dataset:
-        date = x['time'].values[0]
-        if date in data_dataset:
-            data_dataset[date].append(y)
+    for x,y,t in dataset:
+        if t in data_dataset:
+            data_dataset[t].append(y)
         else:
-            data_dataset[date] = [y]
+            data_dataset[t] = [y]
             
     return data_dataset
