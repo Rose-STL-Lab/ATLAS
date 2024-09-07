@@ -140,7 +140,7 @@ class StrideConv(nn.Module):
 
         s = math.sqrt(2 / (3 * 3 * Cin * Rin))
         if use_gl:
-            self.weight = torch.nn.Parameter(s * torch.randn((Cout, Cin, Rin, 12)))
+            self.weight = torch.nn.Parameter(s * torch.randn((Cout, Cin, Rin, 7)))
         else:
             self.weight = torch.nn.Parameter(s * torch.randn((Cout, Cin, Rin, 7)))  # s * torch.randn((Cout, Cin, Rin, 7))  #
         if bias:
@@ -157,11 +157,11 @@ class StrideConv(nn.Module):
         idx_r = torch.arange(0, Rin)
         if use_gl:
             idx_k = torch.Tensor(((0, 0, -1, 0, 6, 0, -1, 0, 0),
-                                  (1, 1, -1, 1, 7, 1, -1, 1, 1),
-                                  (2, 2, -1, 2, 8, 2, -1, 2, 2),
-                                  (3, 3, -1, 3, 9, 3, -1, 3, 3),
-                                  (4, 4, -1, 4, 10, 4, -1, 4, 4),
-                                  (5, 5, -1, 5, 11, 5, -1, 5, 5)))
+                                  (1, 1, -1, 1, 6, 1, -1, 1, 1),
+                                  (2, 2, -1, 2, 6, 2, -1, 2, 2),
+                                  (3, 3, -1, 3, 6, 3, -1, 3, 3),
+                                  (4, 4, -1, 4, 6, 4, -1, 4, 4),
+                                  (5, 5, -1, 5, 6, 5, -1, 5, 5)))
         else:
             idx_k = torch.Tensor(((5, 4, -1, 6, 0, 3, -1, 1, 2),
                                   (4, 3, -1, 5, 0, 2, -1, 6, 1),
@@ -274,7 +274,9 @@ class GaugeEquivariantCNN(nn.Module):
         self.d2 = GaugeDownLayer(use_gl, r - 1, c(16), c(32), 6)
         self.d3 = GaugeDownLayer(use_gl, r - 2, c(32), c(64), 6)
         self.d4 = GaugeDownLayer(use_gl, r - 3, c(64), c(128), 6)
+        self.d5 = GaugeDownLayer(use_gl, r - 4, c(128), c(256), 6)
 
+        self.u4 = GaugeUpLayer(use_gl, r - 5, c(128), c(256), c(128))
         self.u4 = GaugeUpLayer(use_gl, r - 4, c(64), c(128), c(64))
         self.u3 = GaugeUpLayer(use_gl, r - 3, c(32), c(64), c(32))
         self.u2 = GaugeUpLayer(use_gl, r - 2, c(16), c(32), c(16))
@@ -286,8 +288,10 @@ class GaugeEquivariantCNN(nn.Module):
         d2 = self.d2(d1)
         d3 = self.d3(d2)
         d4 = self.d4(d3)
+        d5 = self.d5(d4)
 
-        u4 = self.u4(d3, d4)
+        u5 = self.u5(d4, d5)
+        u4 = self.u4(d3, u5)
         u3 = self.u3(d2, u4)
         u2 = self.u2(d1, u3)
         u1 = self.u1(None, u2)
@@ -330,14 +334,14 @@ def train(use_gl, newIOU):
     test_path = './data/climate/test'
 
     config = Config()
-    config.fields = {"TMQ": {"mean": 19.21859, "std": 15.81723}, 
+    config.fields = {"TMQ": {"mean": 19.21859, "std": 15.81723},
                      "U850": {"mean": 1.55302, "std": 8.29764},
                      "V850": {"mean": 0.25413, "std": 6.23163},
-                     "PSL": {"mean": 100814.414, "std": 1461.2227} 
+                     "PSL": {"mean": 100814.414, "std": 1461.2227}
                     }
     # from https://github.com/andregraubner/ClimateNet/blob/main/config.json
     config.labels = ["Background", "Tropical Cyclone", "Atmospheric River"]
-    config.label_length = 3 
+    config.label_length = 3
     config.field_length = len(config.fields)
     config.lr = 0.001
 
