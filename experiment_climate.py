@@ -122,7 +122,7 @@ class ClimateIcoDataset:
 
 # adapted from https://github.com/DavidDiazGuerra/icoCNN/blob/master/icoCNN/icoCNN.py
 class StrideConv(nn.Module):
-    def __init__(self, use_gl, r, Cin, Cout, Rin, Rout=6, bias=True, smooth_vertices=False, stride=1):
+    def __init__(self, use_gl, r, Cin, Cout, Rin, bias=True, smooth_vertices=False, stride=1):
         super().__init__()
         assert Rin == 1 or Rin == 6
         self.use_gl = use_gl
@@ -130,8 +130,12 @@ class StrideConv(nn.Module):
         self.Cin = Cin
         self.Cout = Cout
         self.Rin = Rin
-        self.Rout = Rout
         self.stride = stride
+
+        if use_gl:
+            self.Rout = 1
+        else:
+            self.Rout = 6
 
         rp = r if self.stride == 1 else r - 1
         self.process_vertices = SmoothVertices(rp) if smooth_vertices else CleanVertices(rp)
@@ -144,13 +148,13 @@ class StrideConv(nn.Module):
             self.weight = torch.nn.Parameter(s * torch.randn((Cout, Cin, Rin, 7)))  # s * torch.randn((Cout, Cin, Rin, 7))  #
         if bias:
             if use_gl:
-                self.bias = torch.nn.Parameter(torch.zeros(Cout * Rout))
+                self.bias = torch.nn.Parameter(torch.zeros(Cout * self.Rout))
             else:
                 self.bias = torch.nn.Parameter(torch.zeros(Cout))
         else:
             self.register_parameter('bias', None)
 
-        self.kernel_expansion_idx = torch.zeros((Cout, Rout, Cin, Rin, 9, 4), dtype=int)
+        self.kernel_expansion_idx = torch.zeros((Cout, self.Rout, Cin, Rin, 9, 4), dtype=int)
         self.kernel_expansion_idx[..., 0] = torch.arange(Cout).reshape((Cout, 1, 1, 1, 1))
         self.kernel_expansion_idx[..., 1] = torch.arange(Cin).reshape((1, 1, Cin, 1, 1))
         idx_r = torch.arange(0, Rin)
@@ -169,7 +173,7 @@ class StrideConv(nn.Module):
                                   (1, 6, -1, 2, 0, 5, -1, 3, 4),
                                   (6, 5, -1, 1, 0, 4, -1, 2, 3)))
 
-        for i in range(Rout):
+        for i in range(self.Rout):
             self.kernel_expansion_idx[:, i, :, :, :, 2] = idx_r.reshape((1, 1, Rin, 1))
             self.kernel_expansion_idx[:, i, :, :, :, 3] = idx_k[i,:]
             idx_r = idx_r.roll(1)
@@ -227,8 +231,8 @@ class GaugeDownLayer(nn.Module):
         super().__init__()
 
         self.model = nn.Sequential(
-            StrideConv(use_gl, r, c_in, c_out, r_in, stride=2),
-            LNormIco(c_out, 6),
+            StrideConv(use_gl, r, c_in, c_out, min(r_in, 1 if use_gl else 6), stride=2),
+            LNormIco(c_out, 1 if use_gl else 6),
             nn.Tanh()
         )
 
@@ -240,10 +244,10 @@ class GaugeUpLayer(nn.Module):
         super().__init__()
 
         self.model = nn.Sequential(
-            StrideConv(use_gl, r + 1, old_c_in + c_in, c_out, 6),
-            LNormIco(c_out, 6),
+            StrideConv(use_gl, r + 1, old_c_in + c_in, c_out, 1 if use_gl else 6),
+            LNormIco(c_out, 1 if use_gl else 6),
         )
-        self.lnorm = LNormIco(c_out, 6)
+        self.lnorm = LNormIco(c_out, 1 if use_gl else 6)
         self.activate = activate
 
     def forward(self, old, x):
@@ -266,8 +270,12 @@ class GaugeEquivariantCNN(nn.Module):
         super().__init__()
 
         r = ICO_RES
+
         def c(raw):
-            return raw
+            if use_gl:
+                return int(math.sqrt(6) * raw)
+            else:
+                return raw
 
         self.d1 = GaugeDownLayer(use_gl, r - 0,  4, c(16), 1)
         self.d2 = GaugeDownLayer(use_gl, r - 1, c(16), c(32), 6)
@@ -275,7 +283,7 @@ class GaugeEquivariantCNN(nn.Module):
         self.d4 = GaugeDownLayer(use_gl, r - 3, c(64), c(128), 6)
         self.d5 = GaugeDownLayer(use_gl, r - 4, c(128), c(256), 6)
 
-        self.u4 = GaugeUpLayer(use_gl, r - 5, c(128), c(256), c(128))
+        self.u5 = GaugeUpLayer(use_gl, r - 5, c(128), c(256), c(128))
         self.u4 = GaugeUpLayer(use_gl, r - 4, c(64), c(128), c(64))
         self.u3 = GaugeUpLayer(use_gl, r - 3, c(32), c(64), c(32))
         self.u2 = GaugeUpLayer(use_gl, r - 2, c(16), c(32), c(16))
