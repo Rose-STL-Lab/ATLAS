@@ -4,10 +4,10 @@ from utils import get_device
 from local_symmetry import Predictor, LocalTrainer
 from group_basis import GroupBasis
 from config import Config
-from climatenet.utils.data import ClimateDatasetLabeled, ClimateDataset, get_timestamp_dataset
+from climatenet.utils.data import ClimateDatasetLabeled, ClimateDataset, get_ico_timestamp_dataset
 from climatenet.models import CGNet, CGNetModule
 from climatenet.utils.losses import jaccard_loss
-from climatenet.utils.metrics import get_cm, get_iou_perClass
+from climatenet.utils.metrics import get_iou_perClass, get_cm_ico
 import einops
 from icoCNN import *
 from ff import R2FeatureField
@@ -116,8 +116,9 @@ class ClimateIcoDataset:
 
         x_ico = torch.tensor(x.values, device=device).squeeze(0)[..., self.lat, self.lon]
         y_ico = y_onehot[..., self.lat, self.lon]
+        timestamp = x['time'].values[0]
 
-        return x_ico.unsqueeze(-4), y_ico
+        return x_ico.unsqueeze(-4), y_ico, timestamp
 
 
 # adapted from https://github.com/DavidDiazGuerra/icoCNN/blob/master/icoCNN/icoCNN.py
@@ -339,11 +340,12 @@ def train(use_gl, newIOU):
     config.label_length = 3 
     config.field_length = len(config.fields)
     config.lr = 0.001
-    config.train_batch_size = 4
-    config.pred_batch_size = 8
 
     train_dataset = ClimateIcoDataset(train_path, config)
     test_dataset = ClimateIcoDataset(test_path, config)
+
+    date_train_dataset = get_ico_timestamp_dataset(train_dataset)
+    date_test_dataset = get_ico_timestamp_dataset(test_dataset)
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=config.batch_size, shuffle=True)
@@ -366,18 +368,20 @@ def train(use_gl, newIOU):
 
         cm = torch.zeros((3, 3), device=device)
         count = 0
-        for xx, y_true in tqdm.tqdm(train_loader):
+        for xx, y_true, timestamps in tqdm.tqdm(train_loader):
             _, y_true_ind = torch.max(y_true, dim=1)
 
             y_pred = model(xx)
 
             _, y_pred_ind = torch.max(y_pred, dim=1)
 
-
-            for r in range(3):
-                for c in range(3):
-                    cm[r, c] += torch.sum((y_true_ind == r) & (y_pred_ind == c))
-            count += y_true_ind.numel()
+            if newIOU:
+                cm += get_cm_ico(y_pred, 3, timestamps, date_train_dataset, device)
+            else:
+                for r in range(3):
+                    for c in range(3):
+                        cm[r, c] += torch.sum((y_true_ind == r) & (y_pred_ind == c))
+                count += y_true_ind.numel()
 
             loss = jaccard_loss(y_pred.flatten(2, 3).cpu(), y_true_ind.flatten(1, 2).cpu())
             # loss = torch.nn.functional.cross_entropy(y_pred, y_true)
@@ -388,9 +392,15 @@ def train(use_gl, newIOU):
             loss.backward()
             optim.step()
 
+        if newIOU:
+            print("Epoch", e, "Loss", np.mean(losses))
+            print(cm)
+            ious = get_iou_perClass(cm)
+            print('IOUs: ', ious, ', mean: ', ious.mean())
+        else:
+            print("Epoch", e, "Loss", np.mean(losses), "IOUs")
+            print_iou(cm / count)
 
-        print("Epoch", e, "Loss", np.mean(losses), "IOUs")
-        print_iou(cm / count)
 
     from icoCNN.plots import icosahedral_charts
     import matplotlib
@@ -404,18 +414,26 @@ def train(use_gl, newIOU):
     print("Test IOU")
     cm = torch.zeros((3, 3), device=device)
     count = 0
-    for xx, y_true in tqdm.tqdm(test_loader):
+    for xx, y_true, timestamps in tqdm.tqdm(test_loader):
         y_pred = model(xx)
 
         _, y_true_ind = torch.max(y_true, dim=1)
         _, y_pred_ind = torch.max(y_pred, dim=1)
 
-        for r in range(3):
-            for c in range(3):
-                cm[r, c] += torch.sum((y_true_ind == r) & (y_pred_ind == c))
-        count += y_true_ind.numel()
+        if newIOU:
+            cm += get_cm_ico(y_pred, 3, timestamps, date_test_dataset, device)
+        else:
+            for r in range(3):
+                for c in range(3):
+                    cm[r, c] += torch.sum((y_true_ind == r) & (y_pred_ind == c))
+            count += y_true_ind.numel()
 
-    print_iou(cm / count)
+    if newIOU:
+        print(cm)
+        ious = get_iou_perClass(cm)
+        print('IOUs: ', ious, ', mean: ', ious.mean())
+    else:
+        print_iou(cm / count)
 
     """
     date_train_dataset = None
@@ -431,8 +449,18 @@ def train(use_gl, newIOU):
 
 
 if __name__ == '__main__':
+    train_path = './data/climate/train'
+    test_path = './data/climate/test'
+
+    config = Config()
+    config.fields = {"TMQ": {"mean": 19.21859, "std": 15.81723}, 
+                     "U850": {"mean": 1.55302, "std": 8.29764},
+                     "V850": {"mean": 0.25413, "std": 6.23163},
+                     "PSL": {"mean": 100814.414, "std": 1461.2227} 
+                    }
+
     #discover()
 
     # use_gl = True, newIOU = True
-    train(True, True)
+    train(False, True)
 
