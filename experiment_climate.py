@@ -139,7 +139,7 @@ class StrideConv(nn.Module):
 
         s = math.sqrt(2 / (3 * 3 * Cin * Rin))
         if use_gl:
-            self.weight = torch.nn.Parameter(s * torch.randn((Cout, Cin, Rin, 6)))
+            self.weight = torch.nn.Parameter(s * torch.randn((Cout, Cin, Rin, 12)))
         else:
             self.weight = torch.nn.Parameter(s * torch.randn((Cout, Cin, Rin, 7)))  # s * torch.randn((Cout, Cin, Rin, 7))  #
         if bias:
@@ -155,12 +155,12 @@ class StrideConv(nn.Module):
         self.kernel_expansion_idx[..., 1] = torch.arange(Cin).reshape((1, 1, Cin, 1, 1))
         idx_r = torch.arange(0, Rin)
         if use_gl:
-            idx_k = torch.Tensor(((0, 0, -1, 0, 0, 0, -1, 0, 0),
-                                  (1, 1, -1, 1, 1, 1, -1, 1, 1),
-                                  (2, 2, -1, 2, 2, 2, -1, 2, 2),
-                                  (3, 3, -1, 3, 3, 3, -1, 3, 3),
-                                  (4, 4, -1, 4, 4, 4, -1, 4, 4),
-                                  (5, 5, -1, 5, 5, 5, -1, 5, 5)))
+            idx_k = torch.Tensor(((0, 0, -1, 0, 6, 0, -1, 0, 0),
+                                  (1, 1, -1, 1, 7, 1, -1, 1, 1),
+                                  (2, 2, -1, 2, 8, 2, -1, 2, 2),
+                                  (3, 3, -1, 3, 9, 3, -1, 3, 3),
+                                  (4, 4, -1, 4, 10, 4, -1, 4, 4),
+                                  (5, 5, -1, 5, 11, 5, -1, 5, 5)))
         else:
             idx_k = torch.Tensor(((5, 4, -1, 6, 0, 3, -1, 1, 2),
                                   (4, 3, -1, 5, 0, 2, -1, 6, 1),
@@ -267,11 +267,7 @@ class GaugeEquivariantCNN(nn.Module):
 
         r = ICO_RES
         def c(raw):
-            # give gl model slightly more channels to make up for lower parameter count
-            if use_gl:
-                return int(7 / 6 * raw)
-            else:
-                return raw
+            return raw
 
         self.d1 = GaugeDownLayer(use_gl, r - 0,  4, c(16), 1)
         self.d2 = GaugeDownLayer(use_gl, r - 1, c(16), c(32), 6)
