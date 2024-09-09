@@ -485,7 +485,7 @@ def train(use_gl):
     model = GaugeEquivariantCNN(use_gl).to(device)
     print("Parameter count:", sum(p.numel() for p in model.parameters()))
 
-    optim = torch.optim.Adam(model.parameters())
+    optim = torch.optim.Adam(model.parameters(), lr=config.lr)
     for e in range(config.epochs):
         losses = []
 
@@ -550,7 +550,6 @@ def train(use_gl):
 
     iou = np.mean([bg_iou, tc_iou, ar_iou])
     print("test ious: bg", bg_iou, "tc", tc_iou, "ar", ar_iou, "mean", iou, "precision", precision)
-    print("confusion matrix:\n", cm)
 
 
 if __name__ == '__main__':
