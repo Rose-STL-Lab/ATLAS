@@ -476,7 +476,8 @@ def train(use_gl):
         bg_iou = float(cm[0, 0] / torch.sum(cm[(i == 0) | (j == 0)]).detach().cpu())
         tc_iou = float(cm[1, 1] / torch.sum(cm[(i == 1) | (j == 1)]).detach().cpu())
         ar_iou = float(cm[2, 2] / torch.sum(cm[(i == 2) | (j == 2)]).detach().cpu())
-        precision = float((cm[[0, 1, 2], [0, 1, 2]] / cm.sum(dim=1)).mean().detach().cpu())
+        denom = torch.max(cm.sum(dim=1), torch.tensor(1))
+        precision = float((cm[[0, 1, 2], [0, 1, 2]] / denom).mean().detach().cpu())
         iou = torch.tensor([bg_iou, tc_iou, ar_iou]).mean()
         print("bg", bg_iou, "tc", tc_iou, "ar", ar_iou, "mean", iou, "precision", precision)
         print("confusion matrix:\n", cm)
@@ -541,7 +542,9 @@ def train(use_gl):
         if ar == ar:
             ar_iou.append(ar)
 
-        precision.append(float((cm[[0, 1, 2], [0, 1, 2]] / cm.sum(dim=1)).mean().detach().cpu()))
+        
+        denom = torch.max(cm.sum(dim=1), torch.tensor(1))
+        precision.append(float((cm[[0, 1, 2], [0, 1, 2]] / denom).mean().detach().cpu()))
 
     bg_iou = np.mean(bg_iou)
     tc_iou = np.mean(tc_iou)
