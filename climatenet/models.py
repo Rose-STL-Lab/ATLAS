@@ -8,7 +8,7 @@ import torch.nn.functional as F
 from climatenet.modules import *
 from climatenet.utils.data import ClimateDataset, ClimateDatasetLabeled
 from climatenet.utils.losses import jaccard_loss
-from climatenet.utils.metrics import get_cm, get_iou_perClass, get_cm_avg
+from climatenet.utils.metrics import get_cm, get_iou_perClass
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from tqdm import tqdm

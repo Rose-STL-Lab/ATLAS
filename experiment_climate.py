@@ -7,7 +7,7 @@ from config import Config
 from climatenet.utils.data import ClimateDatasetLabeled, ClimateDataset, get_ico_timestamp_dataset
 from climatenet.models import CGNet, CGNetModule
 from climatenet.utils.losses import jaccard_loss
-from climatenet.utils.metrics import get_iou_perClass, get_cm_ico
+from climatenet.utils.metrics import get_iou_perClass
 import einops
 from icoCNN import *
 from ff import R2FeatureField
@@ -122,50 +122,115 @@ class ClimateIcoDataset:
 
 
 # adapted from https://github.com/DavidDiazGuerra/icoCNN/blob/master/icoCNN/icoCNN.py
+class PadIco(torch.nn.Module):
+    """  Pytorch module to pad every chart of an icosahedral signal
+    icoCNN.ConvIco already incorporates this padding, so you probably don't want to directly use this class.
+
+    Parameters
+    ----------
+    r : int
+        Resolution of the input icosahedral signal
+    R : int, 1 or 6
+        6 when the input signal includes the 6 kernel orientation channels or 1 if it doesn't
+    smooth_vertices : bool (optional)
+        If False (default), the vertices of the icosahedral grid are turned into 0 as done in the original paper by
+        Cohen et al. If True, the vertices are replaced by the mean of their neighbours (also equivariant).
+    preserve_vertices : bool (optional)
+        If True, it avoids turning the vertices into 0 (not equivariant). Default is False.
+
+    Shape
+    -----
+    Input : [..., R, 5, 2^r, 2^(r+1)]
+    Output : [..., R, 5, 2^r+2, 2^(r+1)+2]
+    """
+    def __init__(self, r, R, smooth_vertices=False, preserve_vertices=False):
+        super().__init__()
+        self.R = R
+        self.r = r
+        self.H = 2**r
+        self.W = 2**(r+1)
+
+        self.smooth_vertices = smooth_vertices
+        if not preserve_vertices:
+            self.process_vertices = SmoothVertices(r) if smooth_vertices else CleanVertices(r)
+        else:
+            assert not smooth_vertices
+            self.process_vertices = lambda x: x
+
+        idx_in= torch.arange(R * 5 * self.H * self.W, dtype=torch.long).reshape(R, 5, self.H, self.W)
+        idx_out = torch.zeros((R, 5, self.H + 2, self.W + 2), dtype=torch.long)
+        idx_out[..., 1:-1, 1:-1] = idx_in
+        idx_out[..., 0, 1:2 ** r + 1] = idx_in.roll(1, -3)[..., -1, 2 ** r:]
+        idx_out[..., 0, 2 ** r + 1:-1] = idx_in.roll(1, -3).roll(-1, -4)[..., :, -1].flip(-1)
+        idx_out[..., -1, 2:2 ** r + 2] = idx_in.roll(-1, -3).roll(-1, -4)[..., :, 0].flip(-1)
+        idx_out[..., -1, 2 ** r + 1:-1] = idx_in.roll(-1, -3)[..., 0, 0:2 ** r]
+        idx_out[..., 1:-1, 0] = idx_in.roll(1, -3).roll(1, -4)[..., -1, 0:2 ** r].flip(-1)
+        idx_out[..., 2:, -1] = idx_in.roll(-1, -3).roll(1, -4)[..., 0, 2 ** r:].flip(-1)
+        self.reorder_idx = idx_out
+
+    def forward(self, x):
+        x = self.process_vertices(x)
+        if self.smooth_vertices:
+            smooth_north_pole = einops.reduce(x[..., -1, 0], '... R charts -> ... 1 1', 'mean')
+            smooth_south_pole = einops.reduce(x[..., 0, -1], '... R charts -> ... 1 1', 'mean')
+
+        x = einops.rearrange(x, '... R charts H W -> ... (R charts H W)', R=self.R, charts=5, H=self.H, W=self.W)
+        y = x[..., self.reorder_idx]
+
+        if self.smooth_vertices:
+            y[..., -1, 1] = smooth_north_pole
+            y[..., 1, -1] = smooth_south_pole
+
+        return y
+
+GLR = 6
 class StrideConv(nn.Module):
     def __init__(self, use_gl, r, Cin, Cout, Rin, bias=True, smooth_vertices=False, stride=1):
         super().__init__()
-        assert Rin == 1 or Rin == 6
+        assert Rin in [1, 6, 12]
         self.use_gl = use_gl
         self.r = r
         self.Cin = Cin
         self.Cout = Cout
         self.Rin = Rin
         self.stride = stride
-
-        if use_gl:
-            self.Rout = 1
-        else:
-            self.Rout = 6
+        self.Rout = GLR if use_gl else 6
+        # scale factor for generating kernels
+        self.scale = 0.5
 
         rp = r if self.stride == 1 else r - 1
         self.process_vertices = SmoothVertices(rp) if smooth_vertices else CleanVertices(rp)
         self.padding = PadIco(r, Rin, smooth_vertices=smooth_vertices)
 
         s = math.sqrt(2 / (3 * 3 * Cin * Rin))
-        if use_gl:
-            self.weight = torch.nn.Parameter(s * torch.randn((Cout, Cin, Rin, 7)))
-        else:
-            self.weight = torch.nn.Parameter(s * torch.randn((Cout, Cin, Rin, 7)))  # s * torch.randn((Cout, Cin, Rin, 7))  #
+        self.weight = torch.nn.Parameter(s * torch.randn((Cout, Cin, Rin, 7)))
+
         if bias:
-            if use_gl:
-                self.bias = torch.nn.Parameter(torch.zeros(Cout * self.Rout))
-            else:
-                self.bias = torch.nn.Parameter(torch.zeros(Cout))
+            self.bias = torch.nn.Parameter(torch.zeros(Cout))
         else:
             self.register_parameter('bias', None)
 
         self.kernel_expansion_idx = torch.zeros((Cout, self.Rout, Cin, Rin, 9, 4), dtype=int)
         self.kernel_expansion_idx[..., 0] = torch.arange(Cout).reshape((Cout, 1, 1, 1, 1))
         self.kernel_expansion_idx[..., 1] = torch.arange(Cin).reshape((1, 1, Cin, 1, 1))
+
+        self.kernel_expansion_idx2 = self.kernel_expansion_idx.clone()
+
         idx_r = torch.arange(0, Rin)
         if use_gl:
-            idx_k = torch.Tensor(((0, 0, -1, 0, 6, 0, -1, 0, 0),
-                                  (1, 1, -1, 1, 6, 1, -1, 1, 1),
-                                  (2, 2, -1, 2, 6, 2, -1, 2, 2),
-                                  (3, 3, -1, 3, 6, 3, -1, 3, 3),
-                                  (4, 4, -1, 4, 6, 4, -1, 4, 4),
-                                  (5, 5, -1, 5, 6, 5, -1, 5, 5)))
+            idx_k = torch.Tensor(((5, 4, -1, 6, 0, 3, -1, 1, 2),
+                                  (5, 4, -1, 6, 0, 3, -1, 1, 2),
+                                  (3, 2, -1, 4, 0, 1, -1, 5, 6),
+                                  (3, 2, -1, 4, 0, 1, -1, 5, 6),
+                                  (1, 6, -1, 2, 0, 5, -1, 3, 4),
+                                  (1, 6, -1, 2, 0, 5, -1, 3, 4)))
+
+            idx_k2 = torch.Tensor(((5, 4, -1, 6, 0, 3, -1, 1, 2),
+                                   (0, 0, -1, 0, 0, 0, -1, 0, 0),
+                                   (3, 2, -1, 4, 0, 1, -1, 5, 6),
+                                   (0, 0, -1, 0, 0, 0, -1, 0, 0),
+                                   (1, 6, -1, 2, 0, 5, -1, 3, 4),
+                                   (0, 0, -1, 0, 0, 0, -1, 0, 0)))
         else:
             idx_k = torch.Tensor(((5, 4, -1, 6, 0, 3, -1, 1, 2),
                                   (4, 3, -1, 5, 0, 2, -1, 6, 1),
@@ -173,10 +238,14 @@ class StrideConv(nn.Module):
                                   (2, 1, -1, 3, 0, 6, -1, 4, 5),
                                   (1, 6, -1, 2, 0, 5, -1, 3, 4),
                                   (6, 5, -1, 1, 0, 4, -1, 2, 3)))
+            idx_k2 = idx_k
 
         for i in range(self.Rout):
             self.kernel_expansion_idx[:, i, :, :, :, 2] = idx_r.reshape((1, 1, Rin, 1))
             self.kernel_expansion_idx[:, i, :, :, :, 3] = idx_k[i,:]
+
+            self.kernel_expansion_idx2[:, i, :, :, :, 2] = idx_r.reshape((1, 1, Rin, 1))
+            self.kernel_expansion_idx2[:, i, :, :, :, 3] = idx_k2[i,:]
             idx_r = idx_r.roll(1)
 
     def extra_repr(self):
@@ -191,7 +260,16 @@ class StrideConv(nn.Module):
         kernel = kernel.reshape((self.Cout, self.Rout, self.Cin, self.Rin, 3, 3))
         kernel[..., 0, 2] = 0
         kernel[..., 2, 0] = 0
-        return kernel
+
+        kernel2 = self.weight[self.kernel_expansion_idx2[..., 0],
+                              self.kernel_expansion_idx2[..., 1],
+                              self.kernel_expansion_idx2[..., 2],
+                              self.kernel_expansion_idx2[..., 3]]
+        kernel2 = kernel2.reshape((self.Cout, self.Rout, self.Cin, self.Rin, 3, 3))
+        kernel2[..., 0, 2] = 0
+        kernel2[..., 2, 0] = 0
+
+        return kernel * self.scale + kernel2 * (1 - self.scale)
 
     def forward(self, x):
         x = self.padding(x)
@@ -206,11 +284,8 @@ class StrideConv(nn.Module):
 
         kernel = self.get_kernel()
         kernel = einops.rearrange(kernel, 'Cout Rout Cin Rin Hk Wk -> (Cout Rout) (Cin Rin) Hk Wk', Hk=3, Wk=3)
-        if self.use_gl:
-            bias = self.bias
-        else:
-            bias = einops.repeat(self.bias, 'Cout -> (Cout Rout)', Cout=self.Cout, Rout=self.Rout) \
-                if self.bias is not None else None
+        bias = einops.repeat(self.bias, 'Cout -> (Cout Rout)', Cout=self.Cout, Rout=self.Rout) \
+            if self.bias is not None else None
 
         y = torch.nn.functional.conv2d(x, kernel, bias, padding=(1, 1), stride=self.stride)
         y = einops.rearrange(y, '... (C R) (charts H) W -> ... C R charts H W', C=self.Cout, R=self.Rout, charts=5)
@@ -232,9 +307,9 @@ class GaugeDownLayer(nn.Module):
         super().__init__()
 
         self.model = nn.Sequential(
-            StrideConv(use_gl, r, c_in, c_out, min(r_in, 1 if use_gl else 6), stride=2),
-            LNormIco(c_out, 1 if use_gl else 6),
-            nn.Tanh()
+            StrideConv(use_gl, r, c_in, c_out, r_in, stride=2),
+            LNormIco(c_out, GLR if use_gl else 6),
+            nn.LeakyReLU()
         )
 
     def forward(self, x):
@@ -244,11 +319,12 @@ class GaugeUpLayer(nn.Module):
     def __init__(self, use_gl, r, old_c_in, c_in, c_out, activate=True):
         super().__init__()
 
+        c = GLR if use_gl else 6
         self.model = nn.Sequential(
-            StrideConv(use_gl, r + 1, old_c_in + c_in, c_out, 1 if use_gl else 6),
-            LNormIco(c_out, 1 if use_gl else 6),
+            StrideConv(use_gl, r + 1, old_c_in + c_in, c_out, c),
+            LNormIco(c_out, c),
         )
-        self.lnorm = LNormIco(c_out, 1 if use_gl else 6)
+        self.lnorm = LNormIco(c_out, c)
         self.activate = activate
 
     def forward(self, old, x):
@@ -262,7 +338,7 @@ class GaugeUpLayer(nn.Module):
             full_input = upsampled
         ret = self.model(full_input)
         if self.activate:
-            ret = torch.nn.functional.tanh(ret)
+            ret = torch.nn.functional.leaky_relu(ret)
         return ret
 
 
@@ -273,18 +349,14 @@ class GaugeEquivariantCNN(nn.Module):
         r = ICO_RES
 
         def c(raw):
-            if use_gl:
-                return int(math.sqrt(6) * raw)
-            else:
-                return raw
+            return raw
+            return int(raw / math.sqrt(2))
 
         self.d1 = GaugeDownLayer(use_gl, r - 0,  4, c(16), 1)
-        self.d2 = GaugeDownLayer(use_gl, r - 1, c(16), c(32), 6)
-        self.d3 = GaugeDownLayer(use_gl, r - 2, c(32), c(64), 6)
-        self.d4 = GaugeDownLayer(use_gl, r - 3, c(64), c(128), 6)
-        self.d5 = GaugeDownLayer(use_gl, r - 4, c(128), c(256), 6)
+        self.d2 = GaugeDownLayer(use_gl, r - 1, c(16), c(32), GLR)
+        self.d3 = GaugeDownLayer(use_gl, r - 2, c(32), c(64), GLR)
+        self.d4 = GaugeDownLayer(use_gl, r - 3, c(64), c(128), GLR)
 
-        self.u5 = GaugeUpLayer(use_gl, r - 5, c(128), c(256), c(128))
         self.u4 = GaugeUpLayer(use_gl, r - 4, c(64), c(128), c(64))
         self.u3 = GaugeUpLayer(use_gl, r - 3, c(32), c(64), c(32))
         self.u2 = GaugeUpLayer(use_gl, r - 2, c(16), c(32), c(16))
@@ -296,10 +368,8 @@ class GaugeEquivariantCNN(nn.Module):
         d2 = self.d2(d1)
         d3 = self.d3(d2)
         d4 = self.d4(d3)
-        d5 = self.d5(d4)
 
-        u5 = self.u5(d4, d5)
-        u4 = self.u4(d3, u5)
+        u4 = self.u4(d3, d4)
         u3 = self.u3(d2, u4)
         u2 = self.u2(d1, u3)
         u1 = self.u1(None, u2)
@@ -336,7 +406,47 @@ def discover():
     gdn = LocalTrainer(ClimateFeatureField, predictor, basis, dataset, config)   
     gdn.train()
 
-def train(use_gl, newIOU):
+def dataset_iou(dataset):
+    bg_iou = []
+    tc_iou = []
+    ar_iou = []
+    for _, v in dataset.items():
+        if len(v) == 1:
+            continue
+
+        cm = torch.zeros((3, 3), device=device)
+        count = 0
+        for i in range(len(v)):
+            for j in range(i + 1, len(v)):
+                _, x = torch.max(v[i], dim=0)
+                _, y = torch.max(v[j], dim=0)
+
+                for r in range(3):
+                    for c in range(3):
+                        cm[r, c] += torch.sum((x == r) & (y == c))
+                count += x.numel()
+
+        i, j = torch.meshgrid(torch.arange(3), torch.arange(3), indexing='ij')
+        bg = float(cm[0, 0] / torch.sum(cm[(i == 0) | (j == 0)]).detach().cpu())
+        # avoid nans
+        if bg == bg:
+            bg_iou.append(bg)
+        tc = float(cm[1, 1] / torch.sum(cm[(i == 1) | (j == 1)]).detach().cpu())
+        if tc == tc:
+            tc_iou.append(tc)
+        ar = float(cm[2, 2] / torch.sum(cm[(i == 2) | (j == 2)]).detach().cpu())
+        if ar == ar:
+            ar_iou.append(ar)
+
+    bg_iou = np.mean(bg_iou)
+    tc_iou = np.mean(tc_iou)
+    ar_iou = np.mean(ar_iou)
+
+    iou = np.mean([bg_iou, tc_iou, ar_iou])
+    print("dataset ious: bg", bg_iou, "tc", tc_iou, "ar", ar_iou, "mean", iou)
+
+
+def train(use_gl):
     print("Using gl model:", use_gl)
     train_path = './data/climate/train'
     test_path = './data/climate/test'
@@ -360,8 +470,6 @@ def train(use_gl, newIOU):
     date_test_dataset = get_ico_timestamp_dataset(test_dataset)
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
-    # single batch so same timestamp is not in different batches
-    test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=40)
 
     def print_iou(cm):
         i, j = torch.meshgrid(torch.arange(3), torch.arange(3), indexing='ij')
@@ -370,7 +478,8 @@ def train(use_gl, newIOU):
         ar_iou = float(cm[2, 2] / torch.sum(cm[(i == 2) | (j == 2)]).detach().cpu())
         iou = torch.tensor([bg_iou, tc_iou, ar_iou]).mean()
         print("bg", bg_iou, "tc", tc_iou, "ar", ar_iou, "mean", iou)
-        print("confusion matrix", cm)
+        print("confusion matrix:\n", cm)
+
 
     model = GaugeEquivariantCNN(use_gl).to(device)
     print("Parameter count:", sum(p.numel() for p in model.parameters()))
@@ -380,59 +489,68 @@ def train(use_gl, newIOU):
         losses = []
 
         cm = torch.zeros((3, 3), device=device)
-        count = 0
         for xx, y_true, timestamps in tqdm.tqdm(train_loader):
-            _, y_true_ind = torch.max(y_true, dim=1)
-
             y_pred = model(xx)
 
             _, y_pred_ind = torch.max(y_pred, dim=1)
+            _, y_true_ind = torch.max(y_true, dim=1)
 
-            if newIOU:
-                cm += get_cm_ico(y_pred, 3, timestamps, date_train_dataset, device)
-            else:
-                for r in range(3):
-                    for c in range(3):
-                        cm[r, c] += torch.sum((y_true_ind == r) & (y_pred_ind == c))
-                count += y_true_ind.numel()
+            for r in range(3):
+                for c in range(3):
+                    cm[r, c] += torch.sum((y_true_ind == r) & (y_pred_ind == c))
 
             loss = jaccard_loss(y_pred.flatten(2, 3).cpu(), y_true_ind.flatten(1, 2).cpu())
             # loss = torch.nn.functional.cross_entropy(y_pred, y_true)
             losses.append(float(loss.detach().cpu()))
 
-
             optim.zero_grad()
             loss.backward()
             optim.step()
-
-        print("Epoch", e, "Loss", np.mean(losses))
-        print_iou(cm / count)
+        
+        print("Epoch", e, "Loss", np.mean(losses), "IOUs")
+        print_iou(cm)
 
     model.eval()
 
-    print("Test IOU")
-    cm = torch.zeros((3, 3), device=device)
-    count = 0
-    for xx, y_true, timestamps in tqdm.tqdm(test_loader):
-        y_pred = model(xx)
-
-        _, y_true_ind = torch.max(y_true, dim=1)
+    bg_iou = []
+    tc_iou = []
+    ar_iou = []
+    for x, ys in tqdm.tqdm(date_test_dataset.values()):
+        y_pred = model(x.unsqueeze(0))
         _, y_pred_ind = torch.max(y_pred, dim=1)
 
-        if newIOU:
-            cm += get_cm_ico(y_pred, 3, timestamps, date_test_dataset, device)
-        else:
+        cm = torch.zeros((3, 3), device=device)
+        for y in ys:
+            _, y_true_ind = torch.max(y.unsqueeze(0), dim=1)
+
             for r in range(3):
                 for c in range(3):
                     cm[r, c] += torch.sum((y_true_ind == r) & (y_pred_ind == c))
-            count += y_true_ind.numel()
 
-    print_iou(cm / count)
+        i, j = torch.meshgrid(torch.arange(3), torch.arange(3), indexing='ij')
+        bg = float(cm[0, 0] / torch.sum(cm[(i == 0) | (j == 0)]).detach().cpu())
+        # avoid nans
+        if bg == bg:
+            bg_iou.append(bg)
+        tc = float(cm[1, 1] / torch.sum(cm[(i == 1) | (j == 1)]).detach().cpu())
+        if tc == tc:
+            tc_iou.append(tc)
+        ar = float(cm[2, 2] / torch.sum(cm[(i == 2) | (j == 2)]).detach().cpu())
+        if ar == ar:
+            ar_iou.append(ar)
+
+    bg_iou = np.mean(bg_iou)
+    tc_iou = np.mean(tc_iou)
+    ar_iou = np.mean(ar_iou)
+
+    iou = np.mean([bg_iou, tc_iou, ar_iou])
+    print("test ious: bg", bg_iou, "tc", tc_iou, "ar", ar_iou, "mean", iou)
+    print("confusion matrix:\n", cm)
 
 
 if __name__ == '__main__':
     #discover()
 
-    # use_gl = True, newIOU = True
-    train(False, True)
+    # use_gl = True
+    train(True)
 

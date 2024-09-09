@@ -80,8 +80,8 @@ def get_ico_timestamp_dataset(dataset):
     data_dataset = {}
     for x,y,t in dataset:
         if t in data_dataset:
-            data_dataset[t].append(y)
+            data_dataset[t][1].append(y)
         else:
-            data_dataset[t] = [y]
+            data_dataset[t] = (x, [y])
             
     return data_dataset
