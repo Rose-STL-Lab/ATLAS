@@ -309,7 +309,7 @@ class GaugeDownLayer(nn.Module):
         self.model = nn.Sequential(
             StrideConv(use_gl, r, c_in, c_out, r_in, stride=2),
             LNormIco(c_out, GLR if use_gl else 6),
-            nn.LeakyReLU()
+            nn.ReLU()
         )
 
     def forward(self, x):
@@ -338,7 +338,7 @@ class GaugeUpLayer(nn.Module):
             full_input = upsampled
         ret = self.model(full_input)
         if self.activate:
-            ret = torch.nn.functional.leaky_relu(ret)
+            ret = torch.nn.functional.relu(ret)
         return ret
 
 
@@ -461,7 +461,7 @@ def train(use_gl):
     config.labels = ["Background", "Tropical Cyclone", "Atmospheric River"]
     config.label_length = 3
     config.field_length = len(config.fields)
-    config.lr = 0.001
+    config.lr = 0.0005
 
     train_dataset = ClimateIcoDataset(train_path, config)
     test_dataset = ClimateIcoDataset(test_path, config)
@@ -476,8 +476,9 @@ def train(use_gl):
         bg_iou = float(cm[0, 0] / torch.sum(cm[(i == 0) | (j == 0)]).detach().cpu())
         tc_iou = float(cm[1, 1] / torch.sum(cm[(i == 1) | (j == 1)]).detach().cpu())
         ar_iou = float(cm[2, 2] / torch.sum(cm[(i == 2) | (j == 2)]).detach().cpu())
+        precision = float((cm[[0, 1, 2], [0, 1, 2]] / cm.sum(dim=1)).mean().detach().cpu())
         iou = torch.tensor([bg_iou, tc_iou, ar_iou]).mean()
-        print("bg", bg_iou, "tc", tc_iou, "ar", ar_iou, "mean", iou)
+        print("bg", bg_iou, "tc", tc_iou, "ar", ar_iou, "mean", iou, "precision", precision)
         print("confusion matrix:\n", cm)
 
 
@@ -515,6 +516,7 @@ def train(use_gl):
     bg_iou = []
     tc_iou = []
     ar_iou = []
+    precision = []
     for x, ys in tqdm.tqdm(date_test_dataset.values()):
         y_pred = model(x.unsqueeze(0))
         _, y_pred_ind = torch.max(y_pred, dim=1)
@@ -539,12 +541,15 @@ def train(use_gl):
         if ar == ar:
             ar_iou.append(ar)
 
+        precision.append(float((cm[[0, 1, 2], [0, 1, 2]] / cm.sum(dim=1)).mean().detach().cpu()))
+
     bg_iou = np.mean(bg_iou)
     tc_iou = np.mean(tc_iou)
     ar_iou = np.mean(ar_iou)
+    precision = np.mean(precision)
 
     iou = np.mean([bg_iou, tc_iou, ar_iou])
-    print("test ious: bg", bg_iou, "tc", tc_iou, "ar", ar_iou, "mean", iou)
+    print("test ious: bg", bg_iou, "tc", tc_iou, "ar", ar_iou, "mean", iou, "precision", precision)
     print("confusion matrix:\n", cm)
 
 
