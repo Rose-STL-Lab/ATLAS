@@ -1,32 +1,33 @@
 import torch
 from abc import ABC, abstractmethod
 
+
 class FeatureField(ABC):
     def __init__(self, data):
         self.data = data
 
     @abstractmethod
     def atlas(self):
-        '''
+        """
             kernel size of 5, used in downstream cnn
-        '''
+        """
         pass
 
     @staticmethod
     @abstractmethod
     def has_standard_atlas():
-        ''' atlas is just pixelwise neighbors, in which case convolution is optimized
-        '''
+        """ atlas is just pixelwise neighbors, in which case convolution is optimized
+        """
         pass
 
     @abstractmethod
     def regions(self, radius):
-        '''
+        """
             Should always be the same location and orientations,
             but the exact location and orientations are implementation defined
-            
+
             used for predictor
-        '''
+        """
         pass
 
     def num_charts(self):
@@ -35,13 +36,13 @@ class FeatureField(ABC):
     def batch_size(self):
         return self.data.shape[0]
 
+
 class R2FeatureField(FeatureField):
     def __init__(self, data):
         super().__init__(data)
 
         w = self.data.shape[-1]
         h = self.data.shape[-2]
-        mid_c = self.data.shape[-1] // 2
         locs = [(h * 0.5, w * 0.5)]
 
         self.locs = [(int(r), int(c)) for r, c in locs]
@@ -61,9 +62,9 @@ class R2FeatureField(FeatureField):
         charts = [
             self.data[
                 :,
-                :, # pytorch prefers channel first
+                :,  # pytorch prefers channel first
                 r - radius: r + radius + 1,
                 c - radius: c + radius + 1
-            ] for r,c in self.locs
+            ] for r, c in self.locs
         ]
         return torch.stack(charts, dim=1)

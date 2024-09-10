@@ -1,8 +1,7 @@
 import torch
 import torch.nn.functional as F
 import math
-import numpy as np
-import torch.distributed as dist
+
 
 def rmse(xx, yy):
     return torch.sqrt(torch.mean(torch.square(xx - yy)))
@@ -19,11 +18,11 @@ def get_device(no_mps=False):
     return torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 
 
-def transform_atlas(matrices, ff_matrices, charts, interpolation):
-    import matplotlib.pyplot as plt
+device = get_device()
 
+
+def transform_atlas(matrices, ff_matrices, charts, interpolation):
     bs, num_charts, ff_dim, height, width = charts.shape
-    device = charts.device
 
     y, x = torch.meshgrid(torch.arange(height, device=device), torch.arange(width, device=device), indexing='ij')
     grid = torch.stack([x, y], dim=-1).float()
@@ -47,35 +46,9 @@ def transform_atlas(matrices, ff_matrices, charts, interpolation):
     transformed_charts = torch.einsum('bij,bjhw->bihw', ff_matrices.to(device), transformed_charts)
     transformed_charts = transformed_charts.view(bs, num_charts, ff_dim, height, width)
 
-    def plot_charts(original_charts, transformed_charts):
-        bs, num_charts, ff_dim, height, width = original_charts.shape
-        
-        for b in range(1):
-            for n in range(1):
-                fig, axs = plt.subplots(2, ff_dim, figsize=(5*ff_dim, 10))
-                fig.suptitle(f'Batch {b+1}, Chart {n+1}')
-               
-                axs = axs.reshape(2, 1)
+    return transformed_charts
 
-                for d in range(ff_dim):
-                    # Plot original chart
-                    axs[0, d].imshow(original_charts[b, n, d].detach().cpu().numpy(), cmap='viridis')
-                    axs[0, d].set_title(f'Original Channel {d+1}')
-                    axs[0, d].axis('off')
-                    
-                    # Plot transformed chart
-                    axs[1, d].imshow(transformed_charts[b, n, d].detach().cpu().numpy(), cmap='viridis')
-                    axs[1, d].set_title(f'Transformed Channel {d+1}')
-                    axs[1, d].axis('off')
-                
-                plt.tight_layout()
-                plt.show() 
 
-    # plot_charts(charts, transformed_charts)
-
-    return transformed_charts    
-
-device = get_device()
 class ManifoldLayer(torch.nn.Module):
     def __init__(self, in_field_len, out_field_len, G):
         super().__init__()
@@ -101,6 +74,7 @@ class ManifoldLayer(torch.nn.Module):
 
     def effective_param_count(self):
         return self.kernel.numel() + self.bias.numel() + sum(p.numel() for p in self.batch_norm.parameters())
+
 
 # conceptually the same idea, but for manifolds
 # where atlas function is just the adjacent elements, we have an optimized version
@@ -131,6 +105,7 @@ class ManifoldStandardLayer(torch.nn.Module):
         if self.G == 'trivial':
             full_kernel = self.kernel
         elif self.G == 'so2':
+            # (really C_4)
             full_kernel = torch.zeros_like(self.kernel)
             for i in range(4):
                 full_kernel += torch.rot90(self.kernel, k=i, dims=(-2, -1)) / 4
@@ -150,7 +125,7 @@ class ManifoldStandardLayer(torch.nn.Module):
         if self.G == 'trivial':
             mul = 1
         elif self.G == 'so2':
-            # a rotationall symmetry kernel only has 7 parameters in effect
+            # a rotationally symmetric kernel only has 7 parameters in effect
             mul = 7 / 25
 
         return int(self.kernel.numel() * mul + self.bias.numel() + sum(p.numel() for p in self.batch_norm.parameters()))

@@ -1,7 +1,5 @@
 import torch
 import torch.nn as nn
-import numpy as np
-import matplotlib.pyplot as plt
 import math
 from utils import get_device, ManifoldPredictor
 from local_symmetry import Predictor, LocalTrainer
@@ -26,7 +24,6 @@ class MNISTFeatureField(R2FeatureField):
 
         w = self.data.shape[-1]
         h = self.data.shape[-2]
-        mid_c = self.data.shape[-1] // 2
         locs = [(h / 6, w * 0.5), (h * 0.5, w * 0.5), (h * 5 / 6, w * 0.5)]
 
         self.locs = [(int(r), int(c)) for r, c in locs]
@@ -44,7 +41,6 @@ class MNISTFeatureField(R2FeatureField):
         phi = torch.asin(inds)
         phi_inds = (phi / math.pi * self.data.shape[-1] + self.data.shape[-1] // 2).round().long()
 
-        charts = []
         for i, (p0, _) in enumerate(self.locs):
             ret[:, i] = self.data[
                 :, 
@@ -54,6 +50,7 @@ class MNISTFeatureField(R2FeatureField):
             ]
 
         return ret
+
 
 # predicts on a single region
 class SinglePredictor(nn.Module):
@@ -100,6 +97,7 @@ class SinglePredictor(nn.Module):
         enc = self.down(x.to(device))
         dec = self.up(enc.to(device))
         return dec[:, :, :29, :29]
+
 
 class MNISTPredictor(nn.Module, Predictor):
     def __init__(self):
@@ -166,7 +164,7 @@ class MNISTDataset(torch.utils.data.Dataset):
                 theta = h(i + jp) % (2 * rotate) - rotate if rotate else 0
                 x, y = self.dataset[jp]
                 x_curr = torchvision.transforms.functional.rotate(x, theta)
-                x_flat[:, r - 14 : r + 14, c - 14: c + 14] = x_curr
+                x_flat[:, r - 14: r + 14, c - 14: c + 14] = x_curr
 
                 p = 32
                 y_curr = torch.zeros(NUM_CLASS, p, p)
@@ -178,14 +176,12 @@ class MNISTDataset(torch.utils.data.Dataset):
             # only label pixels with white
             y_flat *= (x_flat[0] != 0).unsqueeze(0)
 
-
             self.x[i] = self.project(x_flat)
             self.y[i] = self.project(y_flat)
 
             # label unlabelled regions as background
             unlabeled = torch.sum(self.y[i], dim=0) == 0
             self.y[i, 10][unlabeled] = 1
-
 
     # equirectangular nearest neighbor
     def project(self, cylinder):
@@ -212,6 +208,7 @@ class MNISTDataset(torch.utils.data.Dataset):
     def __getitem__(self, index):
         return self.x[index], self.y[index]
 
+
 def discover():
     config = Config()
 
@@ -230,6 +227,7 @@ def discover():
 
     gdn = LocalTrainer(MNISTFeatureField, predictor, basis, dataset, config)   
     gdn.train()
+
 
 def train(G):
     import tqdm 
@@ -301,6 +299,7 @@ def train(G):
 
     print("Test Accuracy", total_acc)
 
+
 def lie_gan_discover():
     """
         In general, since the y labels are squares on the sphere, we do not expect 
@@ -323,7 +322,6 @@ def lie_gan_discover():
          [0, 1, 0]]
     ], device=device)
 
-
     # transforms field by a SO3 rotation
     def transform(g, x_in, is_y):
         # theta phi for each point
@@ -338,7 +336,6 @@ def lie_gan_discover():
         y = torch.sin(phi) * torch.sin(theta)
         z = torch.cos(phi)
         xyz = torch.stack((x, y, z), dim=-1)
-
 
         # inverted x y z for each pixel
         xyz_inv = torch.einsum('bvw, ijw -> bijv', torch.inverse(g), xyz)
@@ -369,6 +366,7 @@ def lie_gan_discover():
     loader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
 
     train_lie_gan(generator, discriminator, loader, config.epochs, 2e-4, 5e-4, 'cosine', 1e-2, 2, 0.0, 1.0, device, print_every=1)
+
 
 if __name__ == '__main__':
     # discover()

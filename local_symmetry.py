@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-import torch.nn as nn
 import tqdm
 from abc import ABC, abstractmethod
 

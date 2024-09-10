@@ -4,10 +4,9 @@ from utils import get_device
 from local_symmetry import Predictor, LocalTrainer
 from group_basis import GroupBasis
 from config import Config
-from climatenet.utils.data import ClimateDatasetLabeled, ClimateDataset, get_ico_timestamp_dataset
-from climatenet.models import CGNet, CGNetModule
+from climatenet.utils.data import ClimateDatasetLabeled, get_ico_timestamp_dataset
+from climatenet.models import CGNetModule
 from climatenet.utils.losses import jaccard_loss
-from climatenet.utils.metrics import get_iou_perClass
 import einops
 from icoCNN import *
 from ff import R2FeatureField
@@ -24,6 +23,7 @@ IN_RAD = 200
 OUT_RAD = 150
 ICO_RES = 6
 
+
 # rather naive atlas (not even an atlas in this case): just three charts along equator
 class ClimateFeatureField(R2FeatureField):
     def __init__(self, data):
@@ -31,10 +31,10 @@ class ClimateFeatureField(R2FeatureField):
 
         c = self.data.shape[-1]
         r = self.data.shape[-2]
-        mid_c = self.data.shape[-1] // 2
         locs = [(r * 0.4, c * 0.5), (r * 0.5, c * 0.5), (r * 0.6, c * 0.5)]
 
         self.locs = [(int(r), int(c)) for r, c in locs]
+
 
 class ClimatePredictor(torch.nn.Module, Predictor):
     def __init__(self, config):
@@ -75,6 +75,7 @@ class ClimatePredictor(torch.nn.Module, Predictor):
     def returns_logits(self):
         return True
 
+
 class ClimateTorchDataset:
     def __init__(self, path, config):
         self.dataset = ClimateDatasetLabeled(path, config)
@@ -90,6 +91,7 @@ class ClimateTorchDataset:
         i, j = torch.meshgrid(torch.arange(h), torch.arange(w), indexing='ij')
         y_onehot[torch.tensor(y.values), i, j] = 1
         return torch.tensor(x.values).to(device).squeeze(0), y_onehot
+
 
 class ClimateIcoDataset:
     def __init__(self, path, config):
@@ -123,26 +125,6 @@ class ClimateIcoDataset:
 
 # adapted from https://github.com/DavidDiazGuerra/icoCNN/blob/master/icoCNN/icoCNN.py
 class PadIco(torch.nn.Module):
-    """  Pytorch module to pad every chart of an icosahedral signal
-    icoCNN.ConvIco already incorporates this padding, so you probably don't want to directly use this class.
-
-    Parameters
-    ----------
-    r : int
-        Resolution of the input icosahedral signal
-    R : int, 1 or 6
-        6 when the input signal includes the 6 kernel orientation channels or 1 if it doesn't
-    smooth_vertices : bool (optional)
-        If False (default), the vertices of the icosahedral grid are turned into 0 as done in the original paper by
-        Cohen et al. If True, the vertices are replaced by the mean of their neighbours (also equivariant).
-    preserve_vertices : bool (optional)
-        If True, it avoids turning the vertices into 0 (not equivariant). Default is False.
-
-    Shape
-    -----
-    Input : [..., R, 5, 2^r, 2^(r+1)]
-    Output : [..., R, 5, 2^r+2, 2^(r+1)+2]
-    """
     def __init__(self, r, R, smooth_vertices=False, preserve_vertices=False):
         super().__init__()
         self.R = R
@@ -183,18 +165,18 @@ class PadIco(torch.nn.Module):
 
         return y
 
-GLR = 6
+
 class StrideConv(nn.Module):
     def __init__(self, use_gl, r, Cin, Cout, Rin, bias=True, smooth_vertices=False, stride=1):
         super().__init__()
-        assert Rin in [1, 6, 12]
+        assert Rin in [1, 6]
         self.use_gl = use_gl
         self.r = r
         self.Cin = Cin
         self.Cout = Cout
         self.Rin = Rin
         self.stride = stride
-        self.Rout = GLR if use_gl else 6
+        self.Rout = 6
         # scale factor for generating kernels
         self.scale = 0.5
 
@@ -290,8 +272,10 @@ class StrideConv(nn.Module):
         y = torch.nn.functional.conv2d(x, kernel, bias, padding=(1, 1), stride=self.stride)
         y = einops.rearrange(y, '... (C R) (charts H) W -> ... C R charts H W', C=self.Cout, R=self.Rout, charts=5)
         y = y[..., 1:-1, 1:-1]
-        if remove_batch_size: y = y[0, ...]
-        else: y = y.reshape(batch_shape + y.shape[1:])
+        if remove_batch_size:
+            y = y[0, ...]
+        else:
+            y = y.reshape(batch_shape + y.shape[1:])
 
         if self.stride == 2:
             flat_y = y.flatten(0, 2)
@@ -308,18 +292,19 @@ class GaugeDownLayer(nn.Module):
 
         self.model = nn.Sequential(
             StrideConv(use_gl, r, c_in, c_out, r_in, stride=2),
-            LNormIco(c_out, GLR if use_gl else 6),
+            LNormIco(c_out, 6),
             nn.ReLU()
         )
 
     def forward(self, x):
         return self.model(x)
 
+
 class GaugeUpLayer(nn.Module):
     def __init__(self, use_gl, r, old_c_in, c_in, c_out, activate=True):
         super().__init__()
 
-        c = GLR if use_gl else 6
+        c = 6
         self.model = nn.Sequential(
             StrideConv(use_gl, r + 1, old_c_in + c_in, c_out, c),
             LNormIco(c_out, c),
@@ -358,7 +343,6 @@ class GaugeEquivariantCNN(nn.Module):
         self.u2 = GaugeUpLayer(use_gl, r - 2, 16, 32, 16)
         self.u1 = GaugeUpLayer(use_gl, r - 1, 0, 16, 3, activate=False)
 
-
     def forward(self, x):
         d1 = self.d1(x)
         d2 = self.d2(d1)
@@ -372,6 +356,7 @@ class GaugeEquivariantCNN(nn.Module):
 
         # collapse 6 orientations
         return torch.sum(u1, dim=-4)
+
 
 def discover():
     train_path = './data/climate'
@@ -401,6 +386,7 @@ def discover():
 
     gdn = LocalTrainer(ClimateFeatureField, predictor, basis, dataset, config)   
     gdn.train()
+
 
 def dataset_iou(dataset):
     bg_iou = []
@@ -478,7 +464,6 @@ def train(use_gl):
         print("bg", bg_iou, "tc", tc_iou, "ar", ar_iou, "mean", iou, "precision", precision)
         print("confusion matrix:\n", cm)
 
-
     model = GaugeEquivariantCNN(use_gl).to(device)
     print("Parameter count:", sum(p.numel() for p in model.parameters()))
 
@@ -538,7 +523,6 @@ def train(use_gl):
         if ar == ar:
             ar_iou.append(ar)
 
-        
         denom = torch.max(cm.sum(dim=1), torch.tensor(1))
         precision.append(float((cm[[0, 1, 2], [0, 1, 2]] / denom).mean().detach().cpu()))
 

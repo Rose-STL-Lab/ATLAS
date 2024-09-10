@@ -1,11 +1,7 @@
 # Modified from LieGAN Codebase (https://github.com/Rose-STL-Lab/LieGAN/blob/master)
 import sys
 import torch
-from torch import nn, optim
-import torch.distributed as dist
-from torch.nn.parallel import DistributedDataParallel
-import os
-import time
+from torch import nn
 import pandas as pd
 import numpy as np
 import tqdm
@@ -14,6 +10,7 @@ from local_symmetry import Predictor
 from config import Config
 
 device = get_device(no_mps=True)
+
 
 class ClassPredictor(Predictor):
     def __init__(self, n_dim, n_components, n_classes):
@@ -63,11 +60,12 @@ class TopTagging(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
 
+
 if __name__ == '__main__':
     torch.set_printoptions(precision=9, sci_mode=False)
 
     n_dim = 4
-    n_component=30
+    n_component = 30
     n_class = 2
     max_discrete = 4
     ortho_factor = 0.1
