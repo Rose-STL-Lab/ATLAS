@@ -348,19 +348,15 @@ class GaugeEquivariantCNN(nn.Module):
 
         r = ICO_RES
 
-        def c(raw):
-            return raw
-            return int(raw / math.sqrt(2))
+        self.d1 = GaugeDownLayer(use_gl, r - 0,  4, 16, 1)
+        self.d2 = GaugeDownLayer(use_gl, r - 1, 16, 32, GLR)
+        self.d3 = GaugeDownLayer(use_gl, r - 2, 32, 64, GLR)
+        self.d4 = GaugeDownLayer(use_gl, r - 3, 64, 128, GLR)
 
-        self.d1 = GaugeDownLayer(use_gl, r - 0,  4, c(16), 1)
-        self.d2 = GaugeDownLayer(use_gl, r - 1, c(16), c(32), GLR)
-        self.d3 = GaugeDownLayer(use_gl, r - 2, c(32), c(64), GLR)
-        self.d4 = GaugeDownLayer(use_gl, r - 3, c(64), c(128), GLR)
-
-        self.u4 = GaugeUpLayer(use_gl, r - 4, c(64), c(128), c(64))
-        self.u3 = GaugeUpLayer(use_gl, r - 3, c(32), c(64), c(32))
-        self.u2 = GaugeUpLayer(use_gl, r - 2, c(16), c(32), c(16))
-        self.u1 = GaugeUpLayer(use_gl, r - 1, 0, c(16), 3, activate=False)
+        self.u4 = GaugeUpLayer(use_gl, r - 4, 64, 128, 64)
+        self.u3 = GaugeUpLayer(use_gl, r - 3, 32, 64, 32)
+        self.u2 = GaugeUpLayer(use_gl, r - 2, 16, 32, 16)
+        self.u1 = GaugeUpLayer(use_gl, r - 1, 0, 16, 3, activate=False)
 
 
     def forward(self, x):
