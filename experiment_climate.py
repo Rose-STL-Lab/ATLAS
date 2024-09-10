@@ -498,7 +498,6 @@ def train(config, kernel_type):
     bg_iou = []
     tc_iou = []
     ar_iou = []
-    precision = []
     for x, ys in tqdm.tqdm(date_test_dataset.values()):
         y_pred = model(x.unsqueeze(0))
         _, y_pred_ind = torch.max(y_pred, dim=1)
@@ -519,10 +518,9 @@ def train(config, kernel_type):
     bg_iou = np.mean(bg_iou)
     tc_iou = np.mean(tc_iou)
     ar_iou = np.mean(ar_iou)
-    precision = np.mean(precision)
 
     iou = np.mean([bg_iou, tc_iou, ar_iou])
-    print("test ious: bg", bg_iou, "tc", tc_iou, "ar", ar_iou, "mean", iou, "precision", precision)
+    print("test ious: bg", bg_iou, "tc", tc_iou, "ar", ar_iou, "mean", iou)
 
 
 if __name__ == '__main__':
