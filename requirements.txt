@@ -1,9 +1,13 @@
-h5py==3.10.0
-numpy==2.0.1
+icoCNN @ https://github.com/DavidDiazGuerra/icoCNN/zipball/master
+einops==0.8.0
+h5py==3.11.0
+matplotlib==3.9.2
+numpy==1.25.2
 pandas==2.2.2
 scikit_learn==1.5.1
-scipy==1.14.0
+scipy==1.14.1
 torch==2.4.0
-torchvision==0.17.1+cu121
-tqdm==4.66.2
-wandb==0.17.5
+torchvision==0.19.0
+tqdm==4.66.4
+wandb==0.17.9
+xarray==2024.7.0
