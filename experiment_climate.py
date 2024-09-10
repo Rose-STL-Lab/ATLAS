@@ -167,10 +167,10 @@ class PadIco(torch.nn.Module):
 
 
 class StrideConv(nn.Module):
-    def __init__(self, use_gl, r, Cin, Cout, Rin, bias=True, smooth_vertices=False, stride=1):
+    def __init__(self, kernel_type, r, Cin, Cout, Rin, bias=True, smooth_vertices=False, stride=1):
         super().__init__()
         assert Rin in [1, 6]
-        self.use_gl = use_gl
+        self.use_gl = kernel_type
         self.r = r
         self.Cin = Cin
         self.Cout = Cout
@@ -199,7 +199,7 @@ class StrideConv(nn.Module):
         self.kernel_expansion_idx2 = self.kernel_expansion_idx.clone()
 
         idx_r = torch.arange(0, Rin)
-        if use_gl:
+        if kernel_type == 'discovered':
             idx_k = torch.Tensor(((5, 4, -1, 6, 0, 3, -1, 1, 2),
                                   (5, 4, -1, 6, 0, 3, -1, 1, 2),
                                   (3, 2, -1, 4, 0, 1, -1, 5, 6),
@@ -213,7 +213,7 @@ class StrideConv(nn.Module):
                                    (0, 0, -1, 0, 0, 0, -1, 0, 0),
                                    (1, 6, -1, 2, 0, 5, -1, 3, 4),
                                    (0, 0, -1, 0, 0, 0, -1, 0, 0)))
-        else:
+        elif kernel_type == 'baseline':
             idx_k = torch.Tensor(((5, 4, -1, 6, 0, 3, -1, 1, 2),
                                   (4, 3, -1, 5, 0, 2, -1, 6, 1),
                                   (3, 2, -1, 4, 0, 1, -1, 5, 6),
@@ -221,6 +221,16 @@ class StrideConv(nn.Module):
                                   (1, 6, -1, 2, 0, 5, -1, 3, 4),
                                   (6, 5, -1, 1, 0, 4, -1, 2, 3)))
             idx_k2 = idx_k
+        elif kernel_type == 'random':
+            idx_k = torch.Tensor(((5, 4, -1, 6, 0, 3, -1, 1, 2),
+                                  (4, 3, -1, 5, 0, 2, -1, 6, 1),
+                                  (3, 2, -1, 4, 0, 1, -1, 5, 6),
+                                  (2, 1, -1, 3, 0, 6, -1, 4, 5),
+                                  (1, 6, -1, 2, 0, 5, -1, 3, 4),
+                                  (6, 5, -1, 1, 0, 4, -1, 2, 3)))
+            idx_k2 = idx_k
+        else:
+            raise ValueError("Invalid kernel type")
 
         for i in range(self.Rout):
             self.kernel_expansion_idx[:, i, :, :, :, 2] = idx_r.reshape((1, 1, Rin, 1))
@@ -230,27 +240,16 @@ class StrideConv(nn.Module):
             self.kernel_expansion_idx2[:, i, :, :, :, 3] = idx_k2[i,:]
             idx_r = idx_r.roll(1)
 
-    def extra_repr(self):
-        return "r={}, Cin={}, Cout={}, Rin={}, Rout={}, bias={}"\
-            .format(self.r, self.Cin, self.Cout, self.Rin, self.Rout, self.bias is not None)
-
     def get_kernel(self):
-        kernel = self.weight[self.kernel_expansion_idx[..., 0],
-                             self.kernel_expansion_idx[..., 1],
-                             self.kernel_expansion_idx[..., 2],
-                             self.kernel_expansion_idx[..., 3]]
-        kernel = kernel.reshape((self.Cout, self.Rout, self.Cin, self.Rin, 3, 3))
-        kernel[..., 0, 2] = 0
-        kernel[..., 2, 0] = 0
+        def sample(idx):
+            ret = self.weight[idx[..., 0], idx[..., 1], idx[..., 2], idx[..., 3]]
+            ret = ret.reshape((self.Cout, self.Rout, self.Cin, self.Rin, 3, 3))
+            ret[..., 0, 2] = 0
+            ret[..., 2, 0] = 0
+            return ret
 
-        kernel2 = self.weight[self.kernel_expansion_idx2[..., 0],
-                              self.kernel_expansion_idx2[..., 1],
-                              self.kernel_expansion_idx2[..., 2],
-                              self.kernel_expansion_idx2[..., 3]]
-        kernel2 = kernel2.reshape((self.Cout, self.Rout, self.Cin, self.Rin, 3, 3))
-        kernel2[..., 0, 2] = 0
-        kernel2[..., 2, 0] = 0
-
+        kernel = sample(self.kernel_expansion_idx)
+        kernel2 = sample(self.kernel_expansion_idx2)
         return kernel * self.scale + kernel2 * (1 - self.scale)
 
     def forward(self, x):
@@ -287,11 +286,11 @@ class StrideConv(nn.Module):
 
             
 class GaugeDownLayer(nn.Module):
-    def __init__(self, use_gl, r, c_in, c_out, r_in):
+    def __init__(self, kernel_type, r, c_in, c_out, r_in):
         super().__init__()
 
         self.model = nn.Sequential(
-            StrideConv(use_gl, r, c_in, c_out, r_in, stride=2),
+            StrideConv(kernel_type, r, c_in, c_out, r_in, stride=2),
             LNormIco(c_out, 6),
             nn.ReLU()
         )
@@ -301,12 +300,12 @@ class GaugeDownLayer(nn.Module):
 
 
 class GaugeUpLayer(nn.Module):
-    def __init__(self, use_gl, r, old_c_in, c_in, c_out, activate=True):
+    def __init__(self, kernel_type, r, old_c_in, c_in, c_out, activate=True):
         super().__init__()
 
         c = 6
         self.model = nn.Sequential(
-            StrideConv(use_gl, r + 1, old_c_in + c_in, c_out, c),
+            StrideConv(kernel_type, r + 1, old_c_in + c_in, c_out, c),
             LNormIco(c_out, c),
         )
         self.lnorm = LNormIco(c_out, c)
@@ -328,20 +327,20 @@ class GaugeUpLayer(nn.Module):
 
 
 class GaugeEquivariantCNN(nn.Module):
-    def __init__(self, use_gl):
+    def __init__(self, kernel_type):
         super().__init__()
 
         r = ICO_RES
 
-        self.d1 = GaugeDownLayer(use_gl, r - 0,  4, 16, 1)
-        self.d2 = GaugeDownLayer(use_gl, r - 1, 16, 32, GLR)
-        self.d3 = GaugeDownLayer(use_gl, r - 2, 32, 64, GLR)
-        self.d4 = GaugeDownLayer(use_gl, r - 3, 64, 128, GLR)
+        self.d1 = GaugeDownLayer(kernel_type, r - 0, 4, 16, 1)
+        self.d2 = GaugeDownLayer(kernel_type, r - 1, 16, 32, 6)
+        self.d3 = GaugeDownLayer(kernel_type, r - 2, 32, 64, 6)
+        self.d4 = GaugeDownLayer(kernel_type, r - 3, 64, 128, 6)
 
-        self.u4 = GaugeUpLayer(use_gl, r - 4, 64, 128, 64)
-        self.u3 = GaugeUpLayer(use_gl, r - 3, 32, 64, 32)
-        self.u2 = GaugeUpLayer(use_gl, r - 2, 16, 32, 16)
-        self.u1 = GaugeUpLayer(use_gl, r - 1, 0, 16, 3, activate=False)
+        self.u4 = GaugeUpLayer(kernel_type, r - 4, 64, 128, 64)
+        self.u3 = GaugeUpLayer(kernel_type, r - 3, 32, 64, 32)
+        self.u2 = GaugeUpLayer(kernel_type, r - 2, 16, 32, 16)
+        self.u1 = GaugeUpLayer(kernel_type, r - 1, 0, 16, 3, activate=False)
 
     def forward(self, x):
         d1 = self.d1(x)
@@ -358,16 +357,18 @@ class GaugeEquivariantCNN(nn.Module):
         return torch.sum(u1, dim=-4)
 
 
-def discover():
+def discover(config):
     train_path = './data/climate'
 
-    config = Config(bs=4)
-    config.fields = {"TMQ": {"mean": 19.21859, "std": 15.81723}, 
-                     "U850": {"mean": 1.55302, "std": 8.29764},
-                     "V850": {"mean": 0.25413, "std": 6.23163},
-                     "PSL": {"mean": 100814.414, "std": 1461.2227} 
-                    }
-    config.label_length = 3 # nothing, AR, TC
+    print("Task: discovery")
+
+    config.fields = {
+        "TMQ": {"mean": 19.21859, "std": 15.81723},
+        "U850": {"mean": 1.55302, "std": 8.29764},
+        "V850": {"mean": 0.25413, "std": 6.23163},
+        "PSL": {"mean": 100814.414, "std": 1461.2227}
+    }
+    config.label_length = 3  # nothing, AR, TC
     config.field_length = len(config.fields)
 
     if config.reuse_predictor:
@@ -379,13 +380,29 @@ def discover():
         config.field_length, 2, config.label_length, 4, config.standard_basis, 
         lr=5e-4, in_rad=IN_RAD, out_rad=OUT_RAD, 
         identity_in_rep=True,
-        identity_out_rep=True, out_interpolation='nearest', r3=5.0
+        identity_out_rep=True, out_interpolation='nearest',
+        r3=5.0  # we use a higher r3 factor mainly due to small scale of dataset
     )
 
     dataset = ClimateTorchDataset(path.join(train_path, 'train'), config)
 
     gdn = LocalTrainer(ClimateFeatureField, predictor, basis, dataset, config)   
     gdn.train()
+
+
+def ious(cm):
+    i, j = torch.meshgrid(torch.arange(3), torch.arange(3), indexing='ij')
+
+    def prune(x):
+        if x != x:
+            return 0
+        return x
+
+    bg_iou = prune(float((cm[0, 0] / torch.sum(cm[(i == 0) | (j == 0)])).detach().cpu()))
+    tc_iou = prune(float((cm[1, 1] / torch.sum(cm[(i == 1) | (j == 1)])).detach().cpu()))
+    ar_iou = prune(float((cm[2, 2] / torch.sum(cm[(i == 2) | (j == 2)])).detach().cpu()))
+
+    return bg_iou, tc_iou, ar_iou
 
 
 def dataset_iou(dataset):
@@ -408,17 +425,12 @@ def dataset_iou(dataset):
                         cm[r, c] += torch.sum((x == r) & (y == c))
                 count += x.numel()
 
-        i, j = torch.meshgrid(torch.arange(3), torch.arange(3), indexing='ij')
-        bg = float(cm[0, 0] / torch.sum(cm[(i == 0) | (j == 0)]).detach().cpu())
         # avoid nans
-        if bg == bg:
-            bg_iou.append(bg)
-        tc = float(cm[1, 1] / torch.sum(cm[(i == 1) | (j == 1)]).detach().cpu())
-        if tc == tc:
-            tc_iou.append(tc)
-        ar = float(cm[2, 2] / torch.sum(cm[(i == 2) | (j == 2)]).detach().cpu())
-        if ar == ar:
-            ar_iou.append(ar)
+        bg, tc, ar = ious(cm)
+
+        bg_iou.append(bg)
+        tc_iou.append(tc)
+        ar_iou.append(ar)
 
     bg_iou = np.mean(bg_iou)
     tc_iou = np.mean(tc_iou)
@@ -428,17 +440,17 @@ def dataset_iou(dataset):
     print("dataset ious: bg", bg_iou, "tc", tc_iou, "ar", ar_iou, "mean", iou)
 
 
-def train(use_gl):
-    print("Using gl model:", use_gl)
+def train(config, kernel_type):
+    print("Task: downstream with kernel type", kernel_type)
     train_path = './data/climate/train'
     test_path = './data/climate/test'
 
-    config = Config()
-    config.fields = {"TMQ": {"mean": 19.21859, "std": 15.81723},
-                     "U850": {"mean": 1.55302, "std": 8.29764},
-                     "V850": {"mean": 0.25413, "std": 6.23163},
-                     "PSL": {"mean": 100814.414, "std": 1461.2227}
-                    }
+    config.fields = {
+        "TMQ": {"mean": 19.21859, "std": 15.81723},
+        "U850": {"mean": 1.55302, "std": 8.29764},
+        "V850": {"mean": 0.25413, "std": 6.23163},
+        "PSL": {"mean": 100814.414, "std": 1461.2227}
+    }
     # from https://github.com/andregraubner/ClimateNet/blob/main/config.json
     config.labels = ["Background", "Tropical Cyclone", "Atmospheric River"]
     config.label_length = 3
@@ -448,24 +460,10 @@ def train(use_gl):
     train_dataset = ClimateIcoDataset(train_path, config)
     test_dataset = ClimateIcoDataset(test_path, config)
 
-    date_train_dataset = get_ico_timestamp_dataset(train_dataset)
+    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
     date_test_dataset = get_ico_timestamp_dataset(test_dataset)
 
-    train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)
-
-    def print_iou(cm):
-        i, j = torch.meshgrid(torch.arange(3), torch.arange(3), indexing='ij')
-        bg_iou = float(cm[0, 0] / torch.sum(cm[(i == 0) | (j == 0)]).detach().cpu())
-        tc_iou = float(cm[1, 1] / torch.sum(cm[(i == 1) | (j == 1)]).detach().cpu())
-        ar_iou = float(cm[2, 2] / torch.sum(cm[(i == 2) | (j == 2)]).detach().cpu())
-        denom = torch.max(cm.sum(dim=1), torch.tensor(1))
-        precision = float((cm[[0, 1, 2], [0, 1, 2]] / denom).mean().detach().cpu())
-        iou = torch.tensor([bg_iou, tc_iou, ar_iou]).mean()
-        print("bg", bg_iou, "tc", tc_iou, "ar", ar_iou, "mean", iou, "precision", precision)
-        print("confusion matrix:\n", cm)
-
-    model = GaugeEquivariantCNN(use_gl).to(device)
-    print("Parameter count:", sum(p.numel() for p in model.parameters()))
+    model = GaugeEquivariantCNN(kernel_type).to(device)
 
     optim = torch.optim.Adam(model.parameters(), lr=config.lr)
     for e in range(config.epochs):
@@ -483,7 +481,6 @@ def train(use_gl):
                     cm[r, c] += torch.sum((y_true_ind == r) & (y_pred_ind == c))
 
             loss = jaccard_loss(y_pred.flatten(2, 3).cpu(), y_true_ind.flatten(1, 2).cpu())
-            # loss = torch.nn.functional.cross_entropy(y_pred, y_true)
             losses.append(float(loss.detach().cpu()))
 
             optim.zero_grad()
@@ -491,7 +488,10 @@ def train(use_gl):
             optim.step()
         
         print("Epoch", e, "Loss", np.mean(losses), "IOUs")
-        print_iou(cm)
+        bg_iou, tc_iou, ar_iou = ious(cm)
+        iou = torch.tensor([bg_iou, tc_iou, ar_iou]).mean()
+        print("bg", bg_iou, "tc", tc_iou, "ar", ar_iou, "mean", iou)
+        print("confusion matrix:\n", cm)
 
     model.eval()
 
@@ -511,20 +511,10 @@ def train(use_gl):
                 for c in range(3):
                     cm[r, c] += torch.sum((y_true_ind == r) & (y_pred_ind == c))
 
-        i, j = torch.meshgrid(torch.arange(3), torch.arange(3), indexing='ij')
-        bg = float(cm[0, 0] / torch.sum(cm[(i == 0) | (j == 0)]).detach().cpu())
-        # avoid nans
-        if bg == bg:
-            bg_iou.append(bg)
-        tc = float(cm[1, 1] / torch.sum(cm[(i == 1) | (j == 1)]).detach().cpu())
-        if tc == tc:
-            tc_iou.append(tc)
-        ar = float(cm[2, 2] / torch.sum(cm[(i == 2) | (j == 2)]).detach().cpu())
-        if ar == ar:
-            ar_iou.append(ar)
-
-        denom = torch.max(cm.sum(dim=1), torch.tensor(1))
-        precision.append(float((cm[[0, 1, 2], [0, 1, 2]] / denom).mean().detach().cpu()))
+        bg, tc, ar = ious(cm)
+        bg_iou.append(bg)
+        tc_iou.append(tc)
+        ar_iou.append(ar)
 
     bg_iou = np.mean(bg_iou)
     tc_iou = np.mean(tc_iou)
@@ -536,8 +526,16 @@ def train(use_gl):
 
 
 if __name__ == '__main__':
-    #discover()
+    c = Config()
 
-    # use_gl = True
-    train(True)
+    if c.task == 'discover':
+        discover(c)
+    elif c.task == 'downstream-baseline':
+        train(c, 'baseline')
+    elif c.task == 'downstream-discovered':
+        train(c, 'discovered')
+    elif c.task == 'downstream-random':
+        train(c, 'random')
+    else:
+        print("Unknown task for climate")
 

@@ -3,6 +3,7 @@ import torch
 import tqdm
 from abc import ABC, abstractmethod
 
+from config import Config
 from utils import rmse
 
 
@@ -33,7 +34,7 @@ class Predictor(ABC):
 
 
 class LocalTrainer:
-    def __init__(self, ff, predictor, basis, dataset, config, debug=True):
+    def __init__(self, ff, predictor, basis, dataset, config: Config, debug=True):
         self.ff = ff
         self.predictor = predictor
         self.basis = basis
@@ -51,7 +52,7 @@ class LocalTrainer:
         for e in range(self.config.epochs):
             # train predictor
             p_losses = []
-            if self.predictor.needs_training():
+            if self.predictor.needs_training() and not self.config.reuse_predictor:
                 for xx, yy in tqdm.tqdm(loader):
                     xff = self.ff(xx)
                     yff = self.ff(yy)
@@ -69,7 +70,7 @@ class LocalTrainer:
 
             p_losses = np.mean(p_losses) if len(p_losses) else 0
 
-            if self.predictor.needs_training():
+            if self.predictor.needs_training() and not self.config.reuse_predictor:
                 torch.save(self.predictor, "predictors/" + self.predictor.name() + '.pt')
 
             # train basis

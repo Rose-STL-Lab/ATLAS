@@ -212,6 +212,8 @@ class MNISTDataset(torch.utils.data.Dataset):
 def discover():
     config = Config()
 
+    print("Task: discovery")
+
     if config.reuse_predictor:
         predictor = torch.load('predictors/mnist.pt')
     else:
@@ -229,86 +231,15 @@ def discover():
     gdn.train()
 
 
-def train(G):
-    import tqdm 
-
-    print("group =", G)
-
-    config = Config()
-
-    dataset = MNISTDataset(config.N, rotate = 60)
-    loader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
-
-    valid_dataset = MNISTDataset(10000, train=False, rotate = 180)
-    valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=config.batch_size, shuffle=True)
-
-    model = ManifoldPredictor([
-            [1, 32, 1],
-            [32, 32, 1],
-            [32, 64, 1],
-            [64, 64, 1],
-            [64, 64, 2],
-            [64, 32, 2],
-            [32, 32, 2],
-            [32, 32, 2],
-            [32, 32, 1],
-            [32, 16, 1],
-            [16, 16, 1],
-            [16, NUM_CLASS, 1],
-        ], MNISTFeatureField, G)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-
-    for e in range(config.epochs):
-        total_loss = 0
-        train_acc = 0
-
-        model.train()
-        for xx, yy in tqdm.tqdm(loader):
-            y_pred = model(xx)
-
-            y_pred = y_pred.permute(0, 2, 3, 1).flatten(0, 2)
-            yy = yy.permute(0, 2, 3, 1).flatten(0, 2)
-            loss = torch.nn.functional.cross_entropy(y_pred, yy, weight=CLASS_WEIGHTS)
-
-            valid = torch.sum(yy, dim=-1) != 0
-            y_pred_ind = torch.max(y_pred, dim=-1, keepdim=True)[1][valid]
-            y_true_ind = torch.max(yy, dim=-1, keepdim=True)[1][valid]
-            train_acc += (y_pred_ind == y_true_ind).float().mean() / len(loader)
-
-            total_loss += loss / len(loader)
-
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-
-        torch.save(model, 'predictors/mnist_' + G + '.pt')
-        print("Loss", total_loss, "Train Accuracy", train_acc)
-
-    total_acc = 0
-    model.eval()
-    for xx, yy in tqdm.tqdm(valid_loader):
-        y_pred = model(xx)
-
-        y_pred = y_pred.permute(0, 2, 3, 1).flatten(0, 2)
-        yy = yy.permute(0, 2, 3, 1).flatten(0, 2)
-
-        valid = torch.sum(yy, dim=-1) != 0
-        y_pred_ind = torch.max(y_pred, dim=-1, keepdim=True)[1][valid]
-        y_true_ind = torch.max(yy, dim=-1, keepdim=True)[1][valid]
-        total_acc += (y_pred_ind == y_true_ind).float().mean() / len(valid_loader)
-
-    print("Test Accuracy", total_acc)
-
-
-def lie_gan_discover():
+def lie_gan_discover(config):
     """
         In general, since the y labels are squares on the sphere, we do not expect 
         LieGan to be able to discover any (continuous) symmetries, since none exist
     """
-    from baseline.SO3LieGan.gan import LieGenerator, LieDiscriminatorSegmentation
-    from baseline.SO3LieGan.train import train_lie_gan
+    from SO3LieGan.gan import LieGenerator, LieDiscriminatorSegmentation
+    from SO3LieGan.train import train_lie_gan
 
-    config = Config()
+    print("Task: discovery with LieGAN")
 
     so3_basis = torch.tensor([
         [[0, -1, 0],
@@ -368,10 +299,85 @@ def lie_gan_discover():
     train_lie_gan(generator, discriminator, loader, config.epochs, 2e-4, 5e-4, 'cosine', 1e-2, 2, 0.0, 1.0, device, print_every=1)
 
 
+def train(G, config):
+    import tqdm
+
+    print("Task: downstream MNIST training with group =", G)
+
+    dataset = MNISTDataset(config.N, rotate=60)
+    loader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
+
+    valid_dataset = MNISTDataset(10000, train=False, rotate=180)
+    valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=config.batch_size, shuffle=True)
+
+    model = ManifoldPredictor([
+        [1, 32, 1],
+        [32, 32, 1],
+        [32, 64, 1],
+        [64, 64, 1],
+        [64, 64, 2],
+        [64, 32, 2],
+        [32, 32, 2],
+        [32, 32, 2],
+        [32, 32, 1],
+        [32, 16, 1],
+        [16, 16, 1],
+        [16, NUM_CLASS, 1],
+    ], MNISTFeatureField, G)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+
+    for e in range(config.epochs):
+        total_loss = 0
+        train_acc = 0
+
+        model.train()
+        for xx, yy in tqdm.tqdm(loader):
+            y_pred = model(xx)
+
+            y_pred = y_pred.permute(0, 2, 3, 1).flatten(0, 2)
+            yy = yy.permute(0, 2, 3, 1).flatten(0, 2)
+            loss = torch.nn.functional.cross_entropy(y_pred, yy, weight=CLASS_WEIGHTS)
+
+            valid = torch.sum(yy, dim=-1) != 0
+            y_pred_ind = torch.max(y_pred, dim=-1, keepdim=True)[1][valid]
+            y_true_ind = torch.max(yy, dim=-1, keepdim=True)[1][valid]
+            train_acc += (y_pred_ind == y_true_ind).float().mean() / len(loader)
+
+            total_loss += loss / len(loader)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+        torch.save(model, 'predictors/mnist_' + G + '.pt')
+        print("Loss", total_loss, "Train Accuracy", train_acc)
+
+    total_acc = 0
+    model.eval()
+    for xx, yy in tqdm.tqdm(valid_loader):
+        y_pred = model(xx)
+
+        y_pred = y_pred.permute(0, 2, 3, 1).flatten(0, 2)
+        yy = yy.permute(0, 2, 3, 1).flatten(0, 2)
+
+        valid = torch.sum(yy, dim=-1) != 0
+        y_pred_ind = torch.max(y_pred, dim=-1, keepdim=True)[1][valid]
+        y_true_ind = torch.max(yy, dim=-1, keepdim=True)[1][valid]
+        total_acc += (y_pred_ind == y_true_ind).float().mean() / len(valid_loader)
+
+    print("Test Accuracy", total_acc)
+
+
 if __name__ == '__main__':
-    # discover()
+    c = Config()
 
-    lie_gan_discover()
-
-    # train('trivial')
-    # train('so2')
+    if c.task == 'discover':
+        discover(c)
+    elif c.task == 'liegan-discover':
+        lie_gan_discover(c)
+    elif c.task == 'downstream-baseline':
+        train('trivial', c)
+    elif c.task == 'downstream-discovered':
+        train('so2', c)
+    else:
+        print("Unknown task for MNIST")

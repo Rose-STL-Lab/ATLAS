@@ -115,12 +115,11 @@ class GroupBasis(nn.Module):
 
     # called by LocalTrainer during training
     def regularization(self, _epoch_num):
-        # aim for as 'orthogonal' as possible basis matrices and in general avoid identity collapse
+        # aim for as 'orthogonal' as possible basis matrices
         sim = self.similarity_loss(self.lie_basis)
 
         # past a certain point, increasing the basis means nothing
         # we only want to increase to a certain extent
-
         clipped = self.lie_basis.clamp(-self.r2, self.r2)
         trace = torch.sqrt(torch.einsum('kdf,kdf->k', clipped, clipped))
         lie_mag = -torch.mean(trace)
