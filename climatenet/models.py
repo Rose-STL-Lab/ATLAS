@@ -65,7 +65,7 @@ class CGNet():
 
         self.optimizer = Adam(self.network.parameters(), lr=self.config.lr)        
         
-    def train(self, dataset: ClimateDatasetLabeled, timestamp_dataset=None):
+    def train(self, dataset: ClimateDatasetLabeled):
         '''Train the network on the given dataset for the given amount of epochs'''
         self.network.train()
         collate = ClimateDatasetLabeled.collate
@@ -88,10 +88,7 @@ class CGNet():
                 # Update training CM
                 predictions = torch.max(outputs, 1)[1]
 
-                if timestamp_dataset:
-                    aggregate_cm += get_cm_avg(predictions, 3, timestamps, timestamp_dataset, self.device)
-                else:
-                    aggregate_cm += get_cm(predictions, labels, 3)
+                aggregate_cm += get_cm(predictions, labels, 3)
 
                 # Pass backward
                 loss = jaccard_loss(outputs, labels)
@@ -129,7 +126,7 @@ class CGNet():
 
         return xr.concat(predictions, dim='time')
 
-    def evaluate(self, dataset: ClimateDatasetLabeled, timestamp_dataset=None):
+    def evaluate(self, dataset: ClimateDatasetLabeled):
         '''Evaluate on a dataset and return statistics'''
         self.network.eval()
         collate = ClimateDatasetLabeled.collate
@@ -147,10 +144,7 @@ class CGNet():
                 outputs = torch.softmax(self.network(features), 1)
             predictions = torch.max(outputs, 1)[1]
             
-            if timestamp_dataset:
-                aggregate_cm += get_cm_avg(predictions, 3, timestamps, timestamp_dataset, self.device)
-            else:
-                aggregate_cm += get_cm(predictions, labels, 3)
+            aggregate_cm += get_cm(predictions, labels, 3)
 
         print('Evaluation stats:')
         print(aggregate_cm)
