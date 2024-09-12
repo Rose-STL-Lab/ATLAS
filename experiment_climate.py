@@ -183,50 +183,75 @@ class StrideConv(nn.Module):
         self.process_vertices = SmoothVertices(rp) if smooth_vertices else CleanVertices(rp)
         self.padding = PadIco(r, Rin, smooth_vertices=smooth_vertices)
 
-        s = math.sqrt(2 / (3 * 3 * Cin * Rin))
-        self.weight = torch.nn.Parameter(s * torch.randn((Cout, Cin, Rin, 7)))
+        s = math.sqrt(2 / (5 * 5 * Cin * Rin))
+        self.weight = torch.nn.Parameter(s * torch.randn((Cout, Cin, Rin, 19)))
 
         if bias:
             self.bias = torch.nn.Parameter(torch.zeros(Cout))
         else:
             self.register_parameter('bias', None)
 
-        self.kernel_expansion_idx = torch.zeros((Cout, self.Rout, Cin, Rin, 9, 4), dtype=int)
+        self.kernel_expansion_idx = torch.zeros((Cout, self.Rout, Cin, Rin, 25, 4), dtype=int)
         self.kernel_expansion_idx[..., 0] = torch.arange(Cout).reshape((Cout, 1, 1, 1, 1))
         self.kernel_expansion_idx[..., 1] = torch.arange(Cin).reshape((1, 1, Cin, 1, 1))
 
         self.kernel_expansion_idx2 = self.kernel_expansion_idx.clone()
 
         idx_r = torch.arange(0, Rin)
-        if kernel_type == 'discovered':
-            idx_k = torch.Tensor(((5, 4, -1, 6, 0, 3, -1, 1, 2),
-                                  (5, 4, -1, 6, 0, 3, -1, 1, 2),
-                                  (3, 2, -1, 4, 0, 1, -1, 5, 6),
-                                  (3, 2, -1, 4, 0, 1, -1, 5, 6),
-                                  (1, 6, -1, 2, 0, 5, -1, 3, 4),
-                                  (1, 6, -1, 2, 0, 5, -1, 3, 4)))
 
-            idx_k2 = torch.Tensor(((5, 4, -1, 6, 0, 3, -1, 1, 2),
-                                   (0, 0, -1, 0, 0, 0, -1, 0, 0),
-                                   (3, 2, -1, 4, 0, 1, -1, 5, 6),
-                                   (0, 0, -1, 0, 0, 0, -1, 0, 0),
-                                   (1, 6, -1, 2, 0, 5, -1, 3, 4),
-                                   (0, 0, -1, 0, 0, 0, -1, 0, 0)))
+        # rotate weight by 60 * n degrees
+        def rotate(weight, n):
+            ind = [2, 8, 14, 3, 4,  1, 7, 13, 19, 9,  0, 6, 12, 18, 24,  15, 5, 11, 17, 23,  20, 21, 10, 16,  22]
+            for i in range(n):
+                weight = weight[ind]
+            return weight
+
+        # zoom in weight
+        def scale(weight):
+            return weight 
+
+        n = -1
+        base = np.array(
+            [9, 8, 7, n, n, 10, 17, 16, 6, n, 11, 18, 19, 15, 5, n, 12, 13, 14, 4, n, n, 1, 2, 3]
+        )
+
+        assert(np.all(rotate(base, 6) == base))
+        if kernel_type == 'discovered':
+            idx_k = torch.Tensor(np.array([
+                rotate(base, 0),
+                rotate(base, 0),
+                rotate(base, 2),
+                rotate(base, 2),
+                rotate(base, 4),
+                rotate(base, 4),
+            ]))
+
+            idx_k2 = torch.Tensor(np.array([
+                rotate(base, 0),
+                scale(rotate(base, 0)),
+                rotate(base, 2),
+                scale(rotate(base, 2)),
+                rotate(base, 4),
+                scale(rotate(base, 4)),
+            ]))
         elif kernel_type == 'baseline':
-            idx_k = torch.Tensor(((5, 4, -1, 6, 0, 3, -1, 1, 2),
-                                  (4, 3, -1, 5, 0, 2, -1, 6, 1),
-                                  (3, 2, -1, 4, 0, 1, -1, 5, 6),
-                                  (2, 1, -1, 3, 0, 6, -1, 4, 5),
-                                  (1, 6, -1, 2, 0, 5, -1, 3, 4),
-                                  (6, 5, -1, 1, 0, 4, -1, 2, 3)))
+            idx_k = torch.Tensor(np.array([
+                rotate(base, 0),
+                rotate(base, 1),
+                rotate(base, 2),
+                rotate(base, 3),
+                rotate(base, 4),
+                rotate(base, 5),
+            ]))
             idx_k2 = idx_k
         elif kernel_type == 'random':
+            # z_2 x z_3 x z_1 x z_1
             idx_k = torch.Tensor(((0, 1, -1, 2, 3, 4, -1, 5, 6),
-                                  (0, 4, -1, 3, 2, 1, -1, 5, 6),
-                                  (5, 2, -1, 3, 1, 4, -1, 6, 0),
-                                  (4, 6, -1, 5, 0, 3, -1, 2, 1),
-                                  (3, 0, -1, 6, 1, 4, -1, 5, 2),
-                                  (0, 3, -1, 1, 4, 5, -1, 6, 2)))
+                                  (6, 2, -1, 3, 1, 4, -1, 5, 0),
+                                  (0, 3, -1, 1, 2, 4, -1, 5, 6),
+                                  (6, 1, -1, 2, 3, 4, -1, 5, 0),
+                                  (0, 2, -1, 3, 1, 4, -1, 5, 6),
+                                  (6, 3, -1, 1, 2, 4, -1, 5, 0)))
             idx_k2 = idx_k
         else:
             raise ValueError("Invalid kernel type")
@@ -241,10 +266,12 @@ class StrideConv(nn.Module):
 
     def get_kernel(self):
         def sample(idx):
+            # append a 0 so that idx == -1 will get assigned 0
+            zero = torch.tensor(0, device=device).view(1, 1, 1, 1).expand(*self.weight.shape[:3], 1)
+            weight = torch.cat((self.weight, zero), dim=-1)
+
             ret = self.weight[idx[..., 0], idx[..., 1], idx[..., 2], idx[..., 3]]
-            ret = ret.reshape((self.Cout, self.Rout, self.Cin, self.Rin, 3, 3))
-            ret[..., 0, 2] = 0
-            ret[..., 2, 0] = 0
+            ret = ret.reshape((self.Cout, self.Rout, self.Cin, self.Rin, 5, 5))
             return ret
 
         kernel = sample(self.kernel_expansion_idx)
@@ -263,11 +290,11 @@ class StrideConv(nn.Module):
             x = x.reshape((-1,) + x.shape[-3:])
 
         kernel = self.get_kernel()
-        kernel = einops.rearrange(kernel, 'Cout Rout Cin Rin Hk Wk -> (Cout Rout) (Cin Rin) Hk Wk', Hk=3, Wk=3)
+        kernel = einops.rearrange(kernel, 'Cout Rout Cin Rin Hk Wk -> (Cout Rout) (Cin Rin) Hk Wk', Hk=5, Wk=5)
         bias = einops.repeat(self.bias, 'Cout -> (Cout Rout)', Cout=self.Cout, Rout=self.Rout) \
             if self.bias is not None else None
 
-        y = torch.nn.functional.conv2d(x, kernel, bias, padding=(1, 1), stride=self.stride)
+        y = torch.nn.functional.conv2d(x, kernel, bias, padding=(2, 2), stride=self.stride)
         y = einops.rearrange(y, '... (C R) (charts H) W -> ... C R charts H W', C=self.Cout, R=self.Rout, charts=5)
         y = y[..., 1:-1, 1:-1]
         if remove_batch_size:
