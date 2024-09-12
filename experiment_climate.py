@@ -105,21 +105,11 @@ class ClimateIcoDataset:
         self.lat = (torch.acos(grid[..., 2]) * num_lat / math.pi).round().long().clip(0, num_lat - 1)
         self.lon = ((math.pi + torch.atan2(grid[..., 1], grid[..., 0])) * num_lon / (2 * math.pi)).round().long().clip(0, num_lon - 1)
 
-        # remove redundant values
-        self.inds = []
-        times = set()
-        for i in range(len(self.dataset)):
-            x, _ = self.dataset[i]
-            timestamp = x['time'].values[0]
-            if timestamp not in times:
-                times.add(timestamp)
-                self.inds.append(i)
-
     def __len__(self):
-        return len(self.inds)
+        return len(self.dataset)
 
     def __getitem__(self, index):
-        x, y = self.dataset[self.inds[index]]
+        x, y = self.dataset[index]
         h, w = y.shape
 
         y_onehot = torch.zeros((3, *y.shape), device=device)
@@ -176,6 +166,7 @@ class PadIco(torch.nn.Module):
         return y
 
 
+"""
 class StrideConv(nn.Module):
     def __init__(self, kernel_type, r, Cin, Cout, Rin, bias=True, smooth_vertices=False, stride=1):
         super().__init__()
@@ -319,16 +310,150 @@ class StrideConv(nn.Module):
             return self.process_vertices(y)
         else:
             return self.process_vertices(y)
+"""
+class StrideConv(nn.Module):
+    def __init__(self, kernel_type, r, Cin, Cout, Rin, bias=True, smooth_vertices=False, stride=1):
+        super().__init__()
+        assert Rin in [1, 6]
+        self.r = r
+        self.Cin = Cin
+        self.Cout = Cout
+        self.Rin = Rin
+        self.stride = stride
+        self.Rout = 6
+        # scale factor for generating kernels
+        self.scale = 0.5
 
-            
+        rp = r if self.stride == 1 else r - 1
+        self.process_vertices = SmoothVertices(rp) if smooth_vertices else CleanVertices(rp)
+        self.padding = PadIco(r, Rin, smooth_vertices=smooth_vertices)
+
+        s = math.sqrt(2 / (3 * 3 * Cin * Rin))
+        self.weight = torch.nn.Parameter(s * torch.randn((Cout, Cin, Rin, 7)))
+
+        if bias:
+            self.bias = torch.nn.Parameter(torch.zeros(Cout))
+        else:
+            self.register_parameter('bias', None)
+
+        self.kernel_expansion_idx = torch.zeros((Cout, self.Rout, Cin, Rin, 9, 4), dtype=int)
+        self.kernel_expansion_idx[..., 0] = torch.arange(Cout).reshape((Cout, 1, 1, 1, 1))
+        self.kernel_expansion_idx[..., 1] = torch.arange(Cin).reshape((1, 1, Cin, 1, 1))
+
+        self.kernel_expansion_idx2 = self.kernel_expansion_idx.clone()
+
+        idx_r = torch.arange(0, Rin)
+        if kernel_type == 'discovered':
+            idx_k = torch.Tensor(((5, 4, -1, 6, 0, 3, -1, 1, 2),
+                                  (5, 4, -1, 6, 0, 3, -1, 1, 2),
+                                  (3, 2, -1, 4, 0, 1, -1, 5, 6),
+                                  (3, 2, -1, 4, 0, 1, -1, 5, 6),
+                                  (1, 6, -1, 2, 0, 5, -1, 3, 4),
+                                  (1, 6, -1, 2, 0, 5, -1, 3, 4)))
+
+            idx_k2 = torch.Tensor(((5, 4, -1, 6, 0, 3, -1, 1, 2),
+                                   (0, 0, -1, 0, 0, 0, -1, 0, 0),
+                                   (3, 2, -1, 4, 0, 1, -1, 5, 6),
+                                   (0, 0, -1, 0, 0, 0, -1, 0, 0),
+                                   (1, 6, -1, 2, 0, 5, -1, 3, 4),
+                                   (0, 0, -1, 0, 0, 0, -1, 0, 0)))
+        elif kernel_type == 'baseline':
+            idx_k = torch.Tensor(((5, 4, -1, 6, 0, 3, -1, 1, 2),
+                                  (4, 3, -1, 5, 0, 2, -1, 6, 1),
+                                  (3, 2, -1, 4, 0, 1, -1, 5, 6),
+                                  (2, 1, -1, 3, 0, 6, -1, 4, 5),
+                                  (1, 6, -1, 2, 0, 5, -1, 3, 4),
+                                  (6, 5, -1, 1, 0, 4, -1, 2, 3)))
+            idx_k2 = idx_k
+        elif kernel_type == 'random':
+            idx_k = torch.Tensor(((0, 1, -1, 2, 3, 4, -1, 5, 6),
+                                  (0, 4, -1, 3, 2, 1, -1, 5, 6),
+                                  (5, 2, -1, 3, 1, 4, -1, 6, 0),
+                                  (4, 6, -1, 5, 0, 3, -1, 2, 1),
+                                  (3, 0, -1, 6, 1, 4, -1, 5, 2),
+                                  (0, 3, -1, 1, 4, 5, -1, 6, 2)))
+            idx_k2 = idx_k
+        else:
+            raise ValueError("Invalid kernel type")
+
+        for i in range(self.Rout):
+            self.kernel_expansion_idx[:, i, :, :, :, 2] = idx_r.reshape((1, 1, Rin, 1))
+            self.kernel_expansion_idx[:, i, :, :, :, 3] = idx_k[i,:]
+
+            self.kernel_expansion_idx2[:, i, :, :, :, 2] = idx_r.reshape((1, 1, Rin, 1))
+            self.kernel_expansion_idx2[:, i, :, :, :, 3] = idx_k2[i,:]
+            idx_r = idx_r.roll(1)
+
+    def get_kernel(self):
+        def sample(idx):
+            ret = self.weight[idx[..., 0], idx[..., 1], idx[..., 2], idx[..., 3]]
+            ret = ret.reshape((self.Cout, self.Rout, self.Cin, self.Rin, 3, 3))
+            ret[..., 0, 2] = 0
+            ret[..., 2, 0] = 0
+            return ret
+
+        kernel = sample(self.kernel_expansion_idx)
+        kernel2 = sample(self.kernel_expansion_idx2)
+        return kernel * self.scale + kernel2 * (1 - self.scale)
+
+    def forward(self, x):
+        x = self.padding(x)
+        x = einops.rearrange(x, '... C R charts H W -> ... (C R) (charts H) W', C=self.Cin, R=self.Rin, charts=5)
+        if x.ndim == 3:
+            x = x.unsqueeze(0)
+            remove_batch_size = True
+        else:
+            remove_batch_size = False
+            batch_shape = x.shape[:-3]
+            x = x.reshape((-1,) + x.shape[-3:])
+
+        kernel = self.get_kernel()
+        kernel = einops.rearrange(kernel, 'Cout Rout Cin Rin Hk Wk -> (Cout Rout) (Cin Rin) Hk Wk', Hk=3, Wk=3)
+        bias = einops.repeat(self.bias, 'Cout -> (Cout Rout)', Cout=self.Cout, Rout=self.Rout) \
+            if self.bias is not None else None
+
+        y = torch.nn.functional.conv2d(x, kernel, bias, padding=(1, 1), stride=self.stride)
+        y = einops.rearrange(y, '... (C R) (charts H) W -> ... C R charts H W', C=self.Cout, R=self.Rout, charts=5)
+        y = y[..., 1:-1, 1:-1]
+        if remove_batch_size:
+            y = y[0, ...]
+        else:
+            y = y.reshape(batch_shape + y.shape[1:])
+
+        if self.stride == 2:
+            flat_y = y.flatten(0, 2)
+            flat_y = torch.nn.functional.pad(flat_y, (0,1,0,1), mode='replicate')
+            y = flat_y.unflatten(0, y.shape[:3])
+            return self.process_vertices(y)
+        else:
+            return self.process_vertices(y)
+
+class BatchNorm(nn.Module):
+    def __init__(self, c):
+        super().__init__()
+        self.bn = nn.BatchNorm2d(c * 6)
+
+    def forward(self, x):
+        ret = torch.zeros_like(x)
+        for i in range(6):
+            x_perm = x.permute(0, 3, 1, 2, 4, 5)
+            y = self.bn(x_perm.flatten(2, 3).flatten(0, 1))
+            y = y.unflatten(1, (-1, 6))
+            y = y.unflatten(0, (-1, 5))
+
+            ret += y.permute(0, 2, 3, 1, 4, 5) / 6
+            x = x.roll(1, dims=2)
+
+        return ret
+
 class GaugeDownLayer(nn.Module):
-    def __init__(self, kernel_type, r, c_in, c_out, r_in):
+    def __init__(self, kernel_type, r, c_in, c_out, r_in=6):
         super().__init__()
 
         self.model = nn.Sequential(
             StrideConv(kernel_type, r, c_in, c_out, r_in, stride=2),
-            LNormIco(c_out, 6),
-            nn.Tanh()
+            BatchNorm(c_out),
+            nn.ReLU()
         )
 
     def forward(self, x):
@@ -342,9 +467,8 @@ class GaugeUpLayer(nn.Module):
         c = 6
         self.model = nn.Sequential(
             StrideConv(kernel_type, r + 1, old_c_in + c_in, c_out, c),
-            LNormIco(c_out, c),
+            BatchNorm(c_out),
         )
-        self.lnorm = LNormIco(c_out, c)
         self.activate = activate
 
     def forward(self, old, x):
@@ -358,7 +482,7 @@ class GaugeUpLayer(nn.Module):
             full_input = upsampled
         ret = self.model(full_input)
         if self.activate:
-            ret = torch.nn.functional.tanh(ret)
+            ret = torch.nn.functional.relu(ret)
         return ret
 
 
@@ -369,10 +493,12 @@ class GaugeEquivariantCNN(nn.Module):
         r = ICO_RES
 
         self.d1 = GaugeDownLayer(kernel_type, r - 0, 16, 16, 1)
-        self.d2 = GaugeDownLayer(kernel_type, r - 1, 16, 32, 6)
-        self.d3 = GaugeDownLayer(kernel_type, r - 2, 32, 64, 6)
-        self.d4 = GaugeDownLayer(kernel_type, r - 3, 64, 128, 6)
+        self.d2 = GaugeDownLayer(kernel_type, r - 1, 16, 32)
+        self.d3 = GaugeDownLayer(kernel_type, r - 2, 32, 64)
+        self.d4 = GaugeDownLayer(kernel_type, r - 3, 64, 128)
+        self.d5 = GaugeDownLayer(kernel_type, r - 4, 128, 256)
 
+        self.u5 = GaugeUpLayer(kernel_type, r - 5, 128, 256, 128)
         self.u4 = GaugeUpLayer(kernel_type, r - 4, 64, 128, 64)
         self.u3 = GaugeUpLayer(kernel_type, r - 3, 32, 64, 32)
         self.u2 = GaugeUpLayer(kernel_type, r - 2, 16, 32, 16)
@@ -383,8 +509,10 @@ class GaugeEquivariantCNN(nn.Module):
         d2 = self.d2(d1)
         d3 = self.d3(d2)
         d4 = self.d4(d3)
+        d5 = self.d5(d4)
 
-        u4 = self.u4(d3, d4)
+        u5 = self.u5(d4, d5)
+        u4 = self.u4(d3, u5)
         u3 = self.u3(d2, u4)
         u2 = self.u2(d1, u3)
         u1 = self.u1(None, u2)
@@ -503,7 +631,7 @@ def train(config, kernel_type):
     config.labels = ["Background", "Tropical Cyclone", "Atmospheric River"]
     config.label_length = 3
     config.field_length = len(config.fields)
-    config.lr = 0.0005
+    config.lr = 0.001
 
     train_dataset = ClimateIcoDataset(train_path, config)
     test_dataset = ClimateIcoDataset(test_path, config)
@@ -512,6 +640,7 @@ def train(config, kernel_type):
     date_test_dataset = get_ico_timestamp_dataset(test_dataset)
 
     model = GaugeEquivariantCNN(kernel_type).to(device)
+    # model = CGNetModule(False, classes=config.label_length, channels=config.field_length).to(device)
 
     optim = torch.optim.Adam(model.parameters(), lr=config.lr)
     for e in range(config.epochs):
@@ -519,6 +648,8 @@ def train(config, kernel_type):
 
         cm = torch.zeros((3, 3), device=device)
         for xx, y_true, timestamps in tqdm.tqdm(train_loader):
+            # xx = xx.permute(0, 2, 3, 1, 4, 5)
+            # y_pred = model(xx.flatten(0, 2)).unflatten(0, (-1, 5)).swapaxes(1, 2)
             y_pred = model(xx)
 
             _, y_pred_ind = torch.max(y_pred, dim=1)
@@ -547,12 +678,14 @@ def train(config, kernel_type):
     tc_iou = []
     ar_iou = []
     for x, ys in tqdm.tqdm(date_test_dataset.values()):
+        # xx = x.unsqueeze(0).permute(0, 2, 3, 1, 4, 5)
+        # y_pred = model(xx.flatten(0, 2)).unflatten(0, (-1, 5)).swapaxes(1, 2)
         y_pred = model(x.unsqueeze(0))
         _, y_pred_ind = torch.max(y_pred, dim=1)
 
         cm = torch.zeros((3, 3), device=device)
         # only take first one
-        for y in ys[:1]:
+        for y in ys:
             _, y_true_ind = torch.max(y.unsqueeze(0), dim=1)
 
             for r in range(3):
