@@ -50,7 +50,7 @@ class MNISTFeatureField(R2FeatureField):
                 phi_inds.unsqueeze(1)
             ]
 
-        return ret
+        return ret.to(device)
 
 
 # predicts on a single region
@@ -118,7 +118,7 @@ class MNISTPredictor(nn.Module, Predictor):
             self.c1(x[:, 0]),
             self.c2(x[:, 1]),
             self.c3(x[:, 2]),
-        ], dim=1).cpu()
+        ], dim=1).to(device)
 
     def loss(self, xx, yy):
         xx = xx.permute(0, 1, 3, 4, 2).flatten(0, 3)
@@ -210,9 +210,7 @@ class MNISTDataset(torch.utils.data.Dataset):
         return self.x[index], self.y[index]
 
 
-def discover():
-    config = Config()
-
+def discover(config):
     print("Task: discovery")
 
     if config.reuse_predictor:
