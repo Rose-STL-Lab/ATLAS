@@ -105,11 +105,21 @@ class ClimateIcoDataset:
         self.lat = (torch.acos(grid[..., 2]) * num_lat / math.pi).round().long().clip(0, num_lat - 1)
         self.lon = ((math.pi + torch.atan2(grid[..., 1], grid[..., 0])) * num_lon / (2 * math.pi)).round().long().clip(0, num_lon - 1)
 
+        # remove redundant values
+        self.inds = []
+        times = set()
+        for i in range(len(self.dataset)):
+            x, _ = self.dataset[i]
+            timestamp = x['time'].values[0]
+            if timestamp not in times:
+                times.add(timestamp)
+                self.inds.append(i)
+
     def __len__(self):
-        return len(self.dataset)
+        return len(self.inds)
 
     def __getitem__(self, index):
-        x, y = self.dataset[index]
+        x, y = self.dataset[self.inds[index]]
         h, w = y.shape
 
         y_onehot = torch.zeros((3, *y.shape), device=device)
@@ -318,7 +328,7 @@ class GaugeDownLayer(nn.Module):
         self.model = nn.Sequential(
             StrideConv(kernel_type, r, c_in, c_out, r_in, stride=2),
             LNormIco(c_out, 6),
-            nn.ReLU()
+            nn.Tanh()
         )
 
     def forward(self, x):
@@ -348,7 +358,7 @@ class GaugeUpLayer(nn.Module):
             full_input = upsampled
         ret = self.model(full_input)
         if self.activate:
-            ret = torch.nn.functional.relu(ret)
+            ret = torch.nn.functional.tanh(ret)
         return ret
 
 
@@ -358,7 +368,7 @@ class GaugeEquivariantCNN(nn.Module):
 
         r = ICO_RES
 
-        self.d1 = GaugeDownLayer(kernel_type, r - 0, 4, 16, 1)
+        self.d1 = GaugeDownLayer(kernel_type, r - 0, 16, 16, 1)
         self.d2 = GaugeDownLayer(kernel_type, r - 1, 16, 32, 6)
         self.d3 = GaugeDownLayer(kernel_type, r - 2, 32, 64, 6)
         self.d4 = GaugeDownLayer(kernel_type, r - 3, 64, 128, 6)
@@ -472,10 +482,22 @@ def train(config, kernel_type):
     test_path = './data/climate/test'
 
     config.fields = {
-        "TMQ": {"mean": 19.21859, "std": 15.81723},
-        "U850": {"mean": 1.55302, "std": 8.29764},
-        "V850": {"mean": 0.25413, "std": 6.23163},
-        "PSL": {"mean": 100814.414, "std": 1461.2227}
+        "TMQ": {"mean": 19.2185, "std": 15.8173},
+        "U850": {"mean": 1.5530, "std": 8.2976},
+        "V850": {"mean": 0.2541, "std": 6.2316},
+        "PRECT": {"mean": 2.9458e-08, "std": 1.5564e-07},
+        "PSL": {"mean": 100814.0781, "std": 1461.2256},
+        "UBOT": {"mean": 0.1249, "std": 6.6533},
+        "VBOT": {"mean": 0.3154, "std": 5.7842},
+        "QREFHT": {"mean": 0.0078, "std": 0.0062},
+        "PS": {"mean": 96571.6172, "std": 9700.1006},
+        "T200": {"mean": 213.2091, "std": 7.8898},
+        "T500": {"mean": 253.0382, "std": 12.8253},
+        "TS": {"mean": 278.7115, "std": 23.6825},
+        "TREFHT": {"mean": 278.4212, "std": 22.5119},
+        "Z1000": {"mean": 474.1728, "std": 832.8082},
+        "Z200": {"mean": 11736.1035, "std": 633.2581},
+        "ZBOT": {"mean": 61.3115, "std": 4.9095}
     }
     # from https://github.com/andregraubner/ClimateNet/blob/main/config.json
     config.labels = ["Background", "Tropical Cyclone", "Atmospheric River"]
@@ -529,7 +551,8 @@ def train(config, kernel_type):
         _, y_pred_ind = torch.max(y_pred, dim=1)
 
         cm = torch.zeros((3, 3), device=device)
-        for y in ys:
+        # only take first one
+        for y in ys[:1]:
             _, y_true_ind = torch.max(y.unsqueeze(0), dim=1)
 
             for r in range(3):
