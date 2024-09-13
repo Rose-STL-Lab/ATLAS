@@ -374,11 +374,11 @@ if __name__ == '__main__':
 
     if c.task == 'discover':
         discover(c)
-    elif c.task == 'liegan-discover':
+    elif c.task == 'liegan_discover':
         lie_gan_discover(c)
-    elif c.task == 'downstream-baseline':
+    elif c.task == 'downstream_baseline':
         train('trivial', c)
-    elif c.task == 'downstream-discovered':
+    elif c.task == 'downstream_discovered':
         train('so2', c)
     else:
         print("Unknown task for MNIST")

@@ -534,9 +534,9 @@ if __name__ == '__main__':
 
     if c.task == 'discover':
         discover(c)
-    elif c.task == 'downstream-baseline':
+    elif c.task == 'downstream_baseline':
         train(c, 'baseline')
-    elif c.task == 'downstream-discovered':
+    elif c.task == 'downstream_discovered':
         train(c, 'discovered')
     else:
         print("Unknown task for climate")
