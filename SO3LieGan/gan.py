@@ -9,6 +9,7 @@ class LieGenerator(nn.Module):
     def __init__(self, n_channel, group_action, basis):
         super(LieGenerator, self).__init__()
         self.n_channel = n_channel
+        self.n_dim = basis.shape[-1]
         self.sigma = nn.Parameter(torch.eye(n_channel, n_channel))
         self.mu = nn.Parameter(torch.zeros(n_channel))
         self.l0reg = False

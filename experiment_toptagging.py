@@ -9,7 +9,7 @@ from utils import get_device
 from local_symmetry import Predictor
 from config import Config
 
-device = get_device(no_mps=True)
+device = get_device()
 
 
 class ClassPredictor(Predictor):
@@ -110,7 +110,7 @@ def cosets(config, predictor, loader):
     max_discrete = 4
 
     # discover discrete generators
-    matrices = torch.nn.Parameter(torch.zeros(512, 4, 4))
+    matrices = torch.nn.Parameter(torch.zeros(256, 4, 4))
     torch.nn.init.normal_(matrices, 0, 1)
     optimizer = torch.optim.Adam([matrices])
 

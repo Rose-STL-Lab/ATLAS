@@ -3,7 +3,7 @@ from utils import get_device
 
 
 class Config:
-    def __init__(self, n=20000, epochs=100, bs=16):
+    def __init__(self, n=10000, epochs=30, bs=16):
         parser = argparse.ArgumentParser()
         parser.add_argument('--standard_basis', default=False, action='store_true')
         parser.add_argument('--batch_size', type=int, default=bs, help='batch size')

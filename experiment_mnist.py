@@ -224,7 +224,7 @@ def discover(config):
         identity_in_rep=True, identity_out_rep=True, 
     )
 
-    dataset = MNISTDataset(config.N, rotate=60)
+    dataset = MNISTDataset(config.N, rotate=45)
 
     gdn = LocalTrainer(MNISTFeatureField, predictor, basis, dataset, config)   
     gdn.train()
@@ -292,10 +292,10 @@ def lie_gan_discover(config):
     generator = LieGenerator(1, transform, so3_basis).to(device)
     discriminator = LieDiscriminatorSegmentation(1, 768, NUM_CLASS).to(device)
 
-    dataset = MNISTDataset(config.N, rotate = 60)
+    dataset = MNISTDataset(config.N, rotate = 45)
     loader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
 
-    train_lie_gan(generator, discriminator, loader, config.epochs, 2e-4, 5e-4, 'cosine', 1e-2, 2, 0.0, 1.0, device, print_every=1)
+    train_lie_gan(generator, discriminator, loader, config.epochs, 1e-4, 1e-3, 'Li_norm', 1e-2, 2, 0.0, 1.0, device, print_every=1)
 
 
 def train(G, config):
@@ -303,7 +303,7 @@ def train(G, config):
 
     print("Task: downstream MNIST training with group =", G)
 
-    dataset = MNISTDataset(config.N, rotate=60)
+    dataset = MNISTDataset(config.N, rotate=45)
     loader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
 
     valid_dataset = MNISTDataset(10000, train=False, rotate=180)
@@ -359,10 +359,12 @@ def train(G, config):
         y_pred = y_pred.permute(0, 2, 3, 1).flatten(0, 2)
         yy = yy.permute(0, 2, 3, 1).flatten(0, 2)
 
-        valid = torch.sum(yy, dim=-1) != 0
-        y_pred_ind = torch.max(y_pred, dim=-1, keepdim=True)[1][valid]
-        y_true_ind = torch.max(yy, dim=-1, keepdim=True)[1][valid]
-        total_acc += (y_pred_ind == y_true_ind).float().mean() / len(valid_loader)
+        y_pred_ind = torch.max(y_pred, dim=-1, keepdim=True)[1]
+        y_true_ind = torch.max(yy, dim=-1, keepdim=True)[1]
+        # we do not include background pixels
+        nonbg = y_true_ind != 10
+
+        total_acc += (y_pred_ind[nonbg] == y_true_ind[nonbg]).float().mean() * len(xx) / len(valid_dataset)
 
     print("Test Accuracy", total_acc)
 
