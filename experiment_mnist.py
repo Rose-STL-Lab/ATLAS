@@ -29,9 +29,10 @@ class MNISTFeatureField(R2FeatureField):
         self.locs = [(int(r), int(c)) for r, c in locs]
     
     def regions(self, radius):
-        ''' we assume a priori knowledge of a good chart
-        In this case, it makes sense to do equirectangular projection (especially since that's used in the projection code),
-        but theoretically similar projections should work as well'''
+        """ we assume a priori knowledge of a good chart
+        In this case, it makes sense to do equirectangular projection
+        (especially since that's used in the projection code),
+        but theoretically similar projections should work as well"""
 
         max_r = self.data.shape[-2] / (2 * math.pi)
         assert radius < max_r

@@ -165,27 +165,24 @@ class PadIco(torch.nn.Module):
 
         return y
 
-
 class StrideConv(nn.Module):
     def __init__(self, kernel_type, r, Cin, Cout, Rin, bias=True, smooth_vertices=False, stride=1):
         super().__init__()
         assert Rin in [1, 6]
-        self.use_gl = kernel_type
         self.r = r
         self.Cin = Cin
         self.Cout = Cout
         self.Rin = Rin
         self.stride = stride
-        self.Rout = 6
-        # scale factor for generating kernels
-        self.scale = 0.5
+        self.Rout = 1 if kernel_type == 'discovered' else 6
 
         rp = r if self.stride == 1 else r - 1
         self.process_vertices = SmoothVertices(rp) if smooth_vertices else CleanVertices(rp)
         self.padding = PadIco(r, Rin, smooth_vertices=smooth_vertices)
 
         s = math.sqrt(2 / (3 * 3 * Cin * Rin))
-        self.weight = torch.nn.Parameter(s * torch.randn((Cout, Cin, Rin, 7)))
+        n = 1 if kernel_type == 'discovered' else 7
+        self.weight = torch.nn.Parameter(s * torch.randn((Cout, Cin, Rin, n)))
 
         if bias:
             self.bias = torch.nn.Parameter(torch.zeros(Cout))
@@ -200,19 +197,8 @@ class StrideConv(nn.Module):
 
         idx_r = torch.arange(0, Rin)
         if kernel_type == 'discovered':
-            idx_k = torch.Tensor(((5, 4, -1, 6, 0, 3, -1, 1, 2),
-                                  (5, 4, -1, 6, 0, 3, -1, 1, 2),
-                                  (3, 2, -1, 4, 0, 1, -1, 5, 6),
-                                  (3, 2, -1, 4, 0, 1, -1, 5, 6),
-                                  (1, 6, -1, 2, 0, 5, -1, 3, 4),
-                                  (1, 6, -1, 2, 0, 5, -1, 3, 4)))
+            idx_k = torch.Tensor(((0, 0, -1, 0, 0, 0, -1, 0, 0),))
 
-            idx_k2 = torch.Tensor(((5, 4, -1, 6, 0, 3, -1, 1, 2),
-                                   (0, 0, -1, 0, 0, 0, -1, 0, 0),
-                                   (3, 2, -1, 4, 0, 1, -1, 5, 6),
-                                   (0, 0, -1, 0, 0, 0, -1, 0, 0),
-                                   (1, 6, -1, 2, 0, 5, -1, 3, 4),
-                                   (0, 0, -1, 0, 0, 0, -1, 0, 0)))
         elif kernel_type == 'baseline':
             idx_k = torch.Tensor(((5, 4, -1, 6, 0, 3, -1, 1, 2),
                                   (4, 3, -1, 5, 0, 2, -1, 6, 1),
@@ -220,15 +206,6 @@ class StrideConv(nn.Module):
                                   (2, 1, -1, 3, 0, 6, -1, 4, 5),
                                   (1, 6, -1, 2, 0, 5, -1, 3, 4),
                                   (6, 5, -1, 1, 0, 4, -1, 2, 3)))
-            idx_k2 = idx_k
-        elif kernel_type == 'random':
-            idx_k = torch.Tensor(((0, 1, -1, 2, 3, 4, -1, 5, 6),
-                                  (0, 4, -1, 3, 2, 1, -1, 5, 6),
-                                  (5, 2, -1, 3, 1, 4, -1, 6, 0),
-                                  (4, 6, -1, 5, 0, 3, -1, 2, 1),
-                                  (3, 0, -1, 6, 1, 4, -1, 5, 2),
-                                  (0, 3, -1, 1, 4, 5, -1, 6, 2)))
-            idx_k2 = idx_k
         else:
             raise ValueError("Invalid kernel type")
 
@@ -236,21 +213,16 @@ class StrideConv(nn.Module):
             self.kernel_expansion_idx[:, i, :, :, :, 2] = idx_r.reshape((1, 1, Rin, 1))
             self.kernel_expansion_idx[:, i, :, :, :, 3] = idx_k[i,:]
 
-            self.kernel_expansion_idx2[:, i, :, :, :, 2] = idx_r.reshape((1, 1, Rin, 1))
-            self.kernel_expansion_idx2[:, i, :, :, :, 3] = idx_k2[i,:]
-            idx_r = idx_r.roll(1)
+            # our batch norm is in fact invariant to rotations (or whatever the group)
+            # so we do not need to roll Rin
 
     def get_kernel(self):
-        def sample(idx):
-            ret = self.weight[idx[..., 0], idx[..., 1], idx[..., 2], idx[..., 3]]
-            ret = ret.reshape((self.Cout, self.Rout, self.Cin, self.Rin, 3, 3))
-            ret[..., 0, 2] = 0
-            ret[..., 2, 0] = 0
-            return ret
-
-        kernel = sample(self.kernel_expansion_idx)
-        kernel2 = sample(self.kernel_expansion_idx2)
-        return kernel * self.scale + kernel2 * (1 - self.scale)
+        idx = self.kernel_expansion_idx
+        ret = self.weight[idx[..., 0], idx[..., 1], idx[..., 2], idx[..., 3]]
+        ret = ret.reshape((self.Cout, self.Rout, self.Cin, self.Rin, 3, 3))
+        ret[..., 0, 2] = 0
+        ret[..., 2, 0] = 0
+        return ret
 
     def forward(self, x):
         x = self.padding(x)
@@ -284,14 +256,28 @@ class StrideConv(nn.Module):
         else:
             return self.process_vertices(y)
 
-            
+class BatchNorm(nn.Module):
+    def __init__(self, c):
+        super().__init__()
+        self.bn = nn.BatchNorm2d(c)
+
+    def forward(self, x):
+        ret = torch.zeros_like(x)
+        x_perm = x.permute(0, 3, 1, 2, 4, 5)
+        x_perm = x_perm.mean(dim=3)
+        y = self.bn(x_perm.flatten(0, 1))
+        y = y.unflatten(1, (-1, 1))
+        y = y.unflatten(0, (-1, 5))
+
+        return y.permute(0, 2, 3, 1, 4, 5) 
+
 class GaugeDownLayer(nn.Module):
-    def __init__(self, kernel_type, r, c_in, c_out, r_in):
+    def __init__(self, kernel_type, r, c_in, c_out):
         super().__init__()
 
         self.model = nn.Sequential(
-            StrideConv(kernel_type, r, c_in, c_out, r_in, stride=2),
-            LNormIco(c_out, 6),
+            StrideConv(kernel_type, r, c_in, c_out, 1, stride=2),
+            BatchNorm(c_out),
             nn.ReLU()
         )
 
@@ -303,12 +289,10 @@ class GaugeUpLayer(nn.Module):
     def __init__(self, kernel_type, r, old_c_in, c_in, c_out, activate=True):
         super().__init__()
 
-        c = 6
         self.model = nn.Sequential(
-            StrideConv(kernel_type, r + 1, old_c_in + c_in, c_out, c),
-            LNormIco(c_out, c),
+            StrideConv(kernel_type, r + 1, old_c_in + c_in, c_out, 1),
+            BatchNorm(c_out),
         )
-        self.lnorm = LNormIco(c_out, c)
         self.activate = activate
 
     def forward(self, old, x):
@@ -332,11 +316,13 @@ class GaugeEquivariantCNN(nn.Module):
 
         r = ICO_RES
 
-        self.d1 = GaugeDownLayer(kernel_type, r - 0, 4, 16, 1)
-        self.d2 = GaugeDownLayer(kernel_type, r - 1, 16, 32, 6)
-        self.d3 = GaugeDownLayer(kernel_type, r - 2, 32, 64, 6)
-        self.d4 = GaugeDownLayer(kernel_type, r - 3, 64, 128, 6)
+        self.d1 = GaugeDownLayer(kernel_type, r - 0, 16, 16)
+        self.d2 = GaugeDownLayer(kernel_type, r - 1, 16, 32)
+        self.d3 = GaugeDownLayer(kernel_type, r - 2, 32, 64)
+        self.d4 = GaugeDownLayer(kernel_type, r - 3, 64, 128)
+        self.d5 = GaugeDownLayer(kernel_type, r - 4, 128, 256)
 
+        self.u5 = GaugeUpLayer(kernel_type, r - 5, 128, 256, 128)
         self.u4 = GaugeUpLayer(kernel_type, r - 4, 64, 128, 64)
         self.u3 = GaugeUpLayer(kernel_type, r - 3, 32, 64, 32)
         self.u2 = GaugeUpLayer(kernel_type, r - 2, 16, 32, 16)
@@ -347,13 +333,15 @@ class GaugeEquivariantCNN(nn.Module):
         d2 = self.d2(d1)
         d3 = self.d3(d2)
         d4 = self.d4(d3)
+        d5 = self.d5(d4)
 
-        u4 = self.u4(d3, d4)
+        u5 = self.u5(d4, d5)
+        u4 = self.u4(d3, u5)
         u3 = self.u3(d2, u4)
         u2 = self.u2(d1, u3)
         u1 = self.u1(None, u2)
 
-        # collapse 6 orientations
+        # collapse all orientations
         return torch.sum(u1, dim=-4)
 
 
@@ -446,16 +434,28 @@ def train(config, kernel_type):
     test_path = './data/climate/test'
 
     config.fields = {
-        "TMQ": {"mean": 19.21859, "std": 15.81723},
-        "U850": {"mean": 1.55302, "std": 8.29764},
-        "V850": {"mean": 0.25413, "std": 6.23163},
-        "PSL": {"mean": 100814.414, "std": 1461.2227}
+        "TMQ": {"mean": 19.2185, "std": 15.8173},
+        "U850": {"mean": 1.5530, "std": 8.2976},
+        "V850": {"mean": 0.2541, "std": 6.2316},
+        "PRECT": {"mean": 2.9458e-08, "std": 1.5564e-07},
+        "PSL": {"mean": 100814.0781, "std": 1461.2256},
+        "UBOT": {"mean": 0.1249, "std": 6.6533},
+        "VBOT": {"mean": 0.3154, "std": 5.7842},
+        "QREFHT": {"mean": 0.0078, "std": 0.0062},
+        "PS": {"mean": 96571.6172, "std": 9700.1006},
+        "T200": {"mean": 213.2091, "std": 7.8898},
+        "T500": {"mean": 253.0382, "std": 12.8253},
+        "TS": {"mean": 278.7115, "std": 23.6825},
+        "TREFHT": {"mean": 278.4212, "std": 22.5119},
+        "Z1000": {"mean": 474.1728, "std": 832.8082},
+        "Z200": {"mean": 11736.1035, "std": 633.2581},
+        "ZBOT": {"mean": 61.3115, "std": 4.9095}
     }
     # from https://github.com/andregraubner/ClimateNet/blob/main/config.json
     config.labels = ["Background", "Tropical Cyclone", "Atmospheric River"]
     config.label_length = 3
     config.field_length = len(config.fields)
-    config.lr = 0.0005
+    config.lr = 0.001
 
     train_dataset = ClimateIcoDataset(train_path, config)
     test_dataset = ClimateIcoDataset(test_path, config)
@@ -464,6 +464,7 @@ def train(config, kernel_type):
     date_test_dataset = get_ico_timestamp_dataset(test_dataset)
 
     model = GaugeEquivariantCNN(kernel_type).to(device)
+    print("Model parameter count", sum(p.numel() for p in model.parameters()))
 
     optim = torch.optim.Adam(model.parameters(), lr=config.lr)
     for e in range(config.epochs):
@@ -471,6 +472,8 @@ def train(config, kernel_type):
 
         cm = torch.zeros((3, 3), device=device)
         for xx, y_true, timestamps in tqdm.tqdm(train_loader):
+            # xx = xx.permute(0, 2, 3, 1, 4, 5)
+            # y_pred = model(xx.flatten(0, 2)).unflatten(0, (-1, 5)).swapaxes(1, 2)
             y_pred = model(xx)
 
             _, y_pred_ind = torch.max(y_pred, dim=1)
@@ -499,10 +502,13 @@ def train(config, kernel_type):
     tc_iou = []
     ar_iou = []
     for x, ys in tqdm.tqdm(date_test_dataset.values()):
+        # xx = x.unsqueeze(0).permute(0, 2, 3, 1, 4, 5)
+        # y_pred = model(xx.flatten(0, 2)).unflatten(0, (-1, 5)).swapaxes(1, 2)
         y_pred = model(x.unsqueeze(0))
         _, y_pred_ind = torch.max(y_pred, dim=1)
 
         cm = torch.zeros((3, 3), device=device)
+        # only take first one
         for y in ys:
             _, y_true_ind = torch.max(y.unsqueeze(0), dim=1)
 
@@ -532,8 +538,6 @@ if __name__ == '__main__':
         train(c, 'baseline')
     elif c.task == 'downstream-discovered':
         train(c, 'discovered')
-    elif c.task == 'downstream-random':
-        train(c, 'random')
     else:
         print("Unknown task for climate")
 
