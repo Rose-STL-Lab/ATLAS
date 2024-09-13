@@ -320,16 +320,15 @@ class StrideConv(nn.Module):
         self.Cout = Cout
         self.Rin = Rin
         self.stride = stride
-        self.Rout = 6
-        # scale factor for generating kernels
-        self.scale = 0.5
+        self.Rout = 1 if kernel_type == 'discovered' else 6
 
         rp = r if self.stride == 1 else r - 1
         self.process_vertices = SmoothVertices(rp) if smooth_vertices else CleanVertices(rp)
         self.padding = PadIco(r, Rin, smooth_vertices=smooth_vertices)
 
         s = math.sqrt(2 / (3 * 3 * Cin * Rin))
-        self.weight = torch.nn.Parameter(s * torch.randn((Cout, Cin, Rin, 7)))
+        n = 1 if kernel_type == 'discovered' else 7
+        self.weight = torch.nn.Parameter(s * torch.randn((Cout, Cin, Rin, n)))
 
         if bias:
             self.bias = torch.nn.Parameter(torch.zeros(Cout))
@@ -344,19 +343,8 @@ class StrideConv(nn.Module):
 
         idx_r = torch.arange(0, Rin)
         if kernel_type == 'discovered':
-            idx_k = torch.Tensor(((5, 4, -1, 6, 0, 3, -1, 1, 2),
-                                  (5, 4, -1, 6, 0, 3, -1, 1, 2),
-                                  (3, 2, -1, 4, 0, 1, -1, 5, 6),
-                                  (3, 2, -1, 4, 0, 1, -1, 5, 6),
-                                  (1, 6, -1, 2, 0, 5, -1, 3, 4),
-                                  (1, 6, -1, 2, 0, 5, -1, 3, 4)))
+            idx_k = torch.Tensor(((0, 0, -1, 0, 0, 0, -1, 0, 0),))
 
-            idx_k2 = torch.Tensor(((5, 4, -1, 6, 0, 3, -1, 1, 2),
-                                   (0, 0, -1, 0, 0, 0, -1, 0, 0),
-                                   (3, 2, -1, 4, 0, 1, -1, 5, 6),
-                                   (0, 0, -1, 0, 0, 0, -1, 0, 0),
-                                   (1, 6, -1, 2, 0, 5, -1, 3, 4),
-                                   (0, 0, -1, 0, 0, 0, -1, 0, 0)))
         elif kernel_type == 'baseline':
             idx_k = torch.Tensor(((5, 4, -1, 6, 0, 3, -1, 1, 2),
                                   (4, 3, -1, 5, 0, 2, -1, 6, 1),
@@ -364,15 +352,6 @@ class StrideConv(nn.Module):
                                   (2, 1, -1, 3, 0, 6, -1, 4, 5),
                                   (1, 6, -1, 2, 0, 5, -1, 3, 4),
                                   (6, 5, -1, 1, 0, 4, -1, 2, 3)))
-            idx_k2 = idx_k
-        elif kernel_type == 'random':
-            idx_k = torch.Tensor(((0, 1, -1, 2, 3, 4, -1, 5, 6),
-                                  (0, 4, -1, 3, 2, 1, -1, 5, 6),
-                                  (5, 2, -1, 3, 1, 4, -1, 6, 0),
-                                  (4, 6, -1, 5, 0, 3, -1, 2, 1),
-                                  (3, 0, -1, 6, 1, 4, -1, 5, 2),
-                                  (0, 3, -1, 1, 4, 5, -1, 6, 2)))
-            idx_k2 = idx_k
         else:
             raise ValueError("Invalid kernel type")
 
@@ -380,21 +359,16 @@ class StrideConv(nn.Module):
             self.kernel_expansion_idx[:, i, :, :, :, 2] = idx_r.reshape((1, 1, Rin, 1))
             self.kernel_expansion_idx[:, i, :, :, :, 3] = idx_k[i,:]
 
-            self.kernel_expansion_idx2[:, i, :, :, :, 2] = idx_r.reshape((1, 1, Rin, 1))
-            self.kernel_expansion_idx2[:, i, :, :, :, 3] = idx_k2[i,:]
-            idx_r = idx_r.roll(1)
+            # our batch norm is in fact invariant to rotations (or whatever the group)
+            # so we do not need to roll Rin
 
     def get_kernel(self):
-        def sample(idx):
-            ret = self.weight[idx[..., 0], idx[..., 1], idx[..., 2], idx[..., 3]]
-            ret = ret.reshape((self.Cout, self.Rout, self.Cin, self.Rin, 3, 3))
-            ret[..., 0, 2] = 0
-            ret[..., 2, 0] = 0
-            return ret
-
-        kernel = sample(self.kernel_expansion_idx)
-        kernel2 = sample(self.kernel_expansion_idx2)
-        return kernel * self.scale + kernel2 * (1 - self.scale)
+        idx = self.kernel_expansion_idx
+        ret = self.weight[idx[..., 0], idx[..., 1], idx[..., 2], idx[..., 3]]
+        ret = ret.reshape((self.Cout, self.Rout, self.Cin, self.Rin, 3, 3))
+        ret[..., 0, 2] = 0
+        ret[..., 2, 0] = 0
+        return ret
 
     def forward(self, x):
         x = self.padding(x)
@@ -431,27 +405,24 @@ class StrideConv(nn.Module):
 class BatchNorm(nn.Module):
     def __init__(self, c):
         super().__init__()
-        self.bn = nn.BatchNorm2d(c * 6)
+        self.bn = nn.BatchNorm2d(c)
 
     def forward(self, x):
         ret = torch.zeros_like(x)
-        for i in range(6):
-            x_perm = x.permute(0, 3, 1, 2, 4, 5)
-            y = self.bn(x_perm.flatten(2, 3).flatten(0, 1))
-            y = y.unflatten(1, (-1, 6))
-            y = y.unflatten(0, (-1, 5))
+        x_perm = x.permute(0, 3, 1, 2, 4, 5)
+        x_perm = x_perm.mean(dim=3)
+        y = self.bn(x_perm.flatten(0, 1))
+        y = y.unflatten(1, (-1, 1))
+        y = y.unflatten(0, (-1, 5))
 
-            ret += y.permute(0, 2, 3, 1, 4, 5) / 6
-            x = x.roll(1, dims=2)
-
-        return ret
+        return y.permute(0, 2, 3, 1, 4, 5) 
 
 class GaugeDownLayer(nn.Module):
-    def __init__(self, kernel_type, r, c_in, c_out, r_in=6):
+    def __init__(self, kernel_type, r, c_in, c_out):
         super().__init__()
 
         self.model = nn.Sequential(
-            StrideConv(kernel_type, r, c_in, c_out, r_in, stride=2),
+            StrideConv(kernel_type, r, c_in, c_out, 1, stride=2),
             BatchNorm(c_out),
             nn.ReLU()
         )
@@ -464,9 +435,8 @@ class GaugeUpLayer(nn.Module):
     def __init__(self, kernel_type, r, old_c_in, c_in, c_out, activate=True):
         super().__init__()
 
-        c = 6
         self.model = nn.Sequential(
-            StrideConv(kernel_type, r + 1, old_c_in + c_in, c_out, c),
+            StrideConv(kernel_type, r + 1, old_c_in + c_in, c_out, 1),
             BatchNorm(c_out),
         )
         self.activate = activate
@@ -492,7 +462,7 @@ class GaugeEquivariantCNN(nn.Module):
 
         r = ICO_RES
 
-        self.d1 = GaugeDownLayer(kernel_type, r - 0, 16, 16, 1)
+        self.d1 = GaugeDownLayer(kernel_type, r - 0, 16, 16)
         self.d2 = GaugeDownLayer(kernel_type, r - 1, 16, 32)
         self.d3 = GaugeDownLayer(kernel_type, r - 2, 32, 64)
         self.d4 = GaugeDownLayer(kernel_type, r - 3, 64, 128)
@@ -517,7 +487,7 @@ class GaugeEquivariantCNN(nn.Module):
         u2 = self.u2(d1, u3)
         u1 = self.u1(None, u2)
 
-        # collapse 6 orientations
+        # collapse all orientations
         return torch.sum(u1, dim=-4)
 
 
@@ -640,7 +610,7 @@ def train(config, kernel_type):
     date_test_dataset = get_ico_timestamp_dataset(test_dataset)
 
     model = GaugeEquivariantCNN(kernel_type).to(device)
-    # model = CGNetModule(False, classes=config.label_length, channels=config.field_length).to(device)
+    print("Model parameter count", sum(p.numel() for p in model.parameters()))
 
     optim = torch.optim.Adam(model.parameters(), lr=config.lr)
     for e in range(config.epochs):
@@ -714,8 +684,6 @@ if __name__ == '__main__':
         train(c, 'baseline')
     elif c.task == 'downstream-discovered':
         train(c, 'discovered')
-    elif c.task == 'downstream-random':
-        train(c, 'random')
     else:
         print("Unknown task for climate")
 
