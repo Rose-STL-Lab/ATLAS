@@ -24,14 +24,14 @@ OUT_RAD = 150
 ICO_RES = 6
 
 
-# rather naive atlas (not even an atlas in this case): just three charts along equator
+# rather naive atlas (not even an atlas in this case): just four charts along equator
 class ClimateFeatureField(R2FeatureField):
     def __init__(self, data):
         super().__init__(data)
 
         c = self.data.shape[-1]
         r = self.data.shape[-2]
-        locs = [(r * 0.4, c * 0.5), (r * 0.5, c * 0.5), (r * 0.6, c * 0.5)]
+        locs = [(r * 0.35, c * 0.5), (r * 0.45, c * 0.5), (r * 0.55, c * 0.5), (r * 0.65, c * 0.5)]
 
         self.locs = [(int(r), int(c)) for r, c in locs]
 
