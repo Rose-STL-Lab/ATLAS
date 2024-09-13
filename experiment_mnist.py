@@ -264,7 +264,7 @@ def lie_gan_discover(config):
         x = torch.sin(phi) * torch.cos(theta)
         y = torch.sin(phi) * torch.sin(theta)
         z = torch.cos(phi)
-        xyz = torch.stack((x, y, z), dim=-1)
+        xyz = torch.stack((x, y, z), dim=-1).to(device)
 
         # inverted x y z for each pixel
         xyz_inv = torch.einsum('bvw, ijw -> bijv', torch.inverse(g), xyz)

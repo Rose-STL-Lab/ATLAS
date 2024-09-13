@@ -68,7 +68,7 @@ def lie_algebra(config, predictor, loader):
     lie = torch.nn.Parameter(torch.empty(7, 4, 4))
     torch.nn.init.normal_(lie, 0, 0.02)
     optimizer = torch.optim.Adam([lie])
-
+    lie = lie.to(device)
     for e in range(config.epochs):
         average_loss = []
         for xx, yy in tqdm.tqdm(loader):
@@ -103,7 +103,7 @@ def lie_algebra(config, predictor, loader):
             optimizer.step()
 
         average_loss = np.mean(average_loss)
-        print("Loss", average_loss, "Basis", lie.detach().cpu())
+        print("Epoch", e, "Loss", average_loss, "Basis", lie.detach().cpu())
 
 
 def cosets(config, predictor, loader):
