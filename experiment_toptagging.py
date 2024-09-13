@@ -71,7 +71,7 @@ def lie_algebra(config, predictor, loader):
     lie = torch.nn.Parameter(torch.empty(7, 4, 4, device=device))
     torch.nn.init.normal_(lie, 0, 0.02)
     optimizer = torch.optim.Adam([lie])
-    lie = lie.to(device)
+
     for e in range(config.epochs):
         average_loss = []
         for xx, yy in tqdm.tqdm(loader):
