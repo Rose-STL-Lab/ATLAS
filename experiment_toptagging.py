@@ -12,7 +12,7 @@ from config import Config
 device = get_device()
 
 
-class ClassPredictor(Predictor):
+class ClassPredictor(nn.Module, Predictor):
     def __init__(self, n_dim, n_components, n_classes):
         super().__init__()
         self.n_dim = n_dim
@@ -33,6 +33,9 @@ class ClassPredictor(Predictor):
     def run(self, x):
         ret = self.model(x.flatten(-2))
         return ret
+
+    def forward(self, x):
+        return self.run(x)
 
     def loss(self, y_pred, y_true):
         return nn.functional.cross_entropy(y_pred.squeeze(-1), y_true.squeeze(-1))
@@ -65,7 +68,7 @@ def lie_algebra(config, predictor, loader):
     ortho_factor = 0.1
     growth_factor = 1
 
-    lie = torch.nn.Parameter(torch.empty(7, 4, 4))
+    lie = torch.nn.Parameter(torch.empty(7, 4, 4, device=device))
     torch.nn.init.normal_(lie, 0, 0.02)
     optimizer = torch.optim.Adam([lie])
     lie = lie.to(device)
@@ -110,7 +113,7 @@ def cosets(config, predictor, loader):
     max_discrete = 4
 
     # discover discrete generators
-    matrices = torch.nn.Parameter(torch.zeros(256, 4, 4))
+    matrices = torch.nn.Parameter(torch.zeros(256, 4, 4, device=device))
     torch.nn.init.normal_(matrices, 0, 1)
     optimizer = torch.optim.Adam([matrices])
 
@@ -156,17 +159,11 @@ def cosets(config, predictor, loader):
                 if torch.det(diff) < 0:
                     return False
 
+                # time reversal
                 if diff[0][0] < 0:
                     return False
 
                 return True
-                # otherwise, check if it preserves the the quadratic on the unit vectors
-                # (heuristic, realistically if it passes the first two, they probably relate
-                # as we are iterating the matrices in order of score, but solutions are always only approximate)
-                # def good_column(t, x, y, z):
-                #     return np.abs((t * t - x * x - y * y - z * z) - 1) < 1e-1
-
-                # return np.all([good_column(*column) for column in diff])
 
             # print out highest matrices that do not relate (by SO+(1, 3)) to one another
             # This dataset does not have any time reversal, so we cannot find P or PT
@@ -188,10 +185,16 @@ def cosets(config, predictor, loader):
                 print(tensor, "determinant", torch.det(tensor))
 
 
-def discover(config):
+def discover(config, continuous, discrete):
     torch.set_printoptions(precision=9, sci_mode=False)
 
-    print("Task: discovering continuous and discrete generators")
+    targets = []
+    if continuous:
+        targets.append("algebra")
+    if discrete:
+        targets.append("cosets")
+
+    print("Task: discovering", targets)
 
     n_dim = 4
     n_component = 30
@@ -201,11 +204,11 @@ def discover(config):
     loader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
 
     if config.reuse_predictor:
-        predictor = torch.load('predictors/toptag.pt')
+        predictor = torch.load('predictors/toptag.pt').to(device)
         print("* Reusing Predictor")
     else:
         print("* Training Predictor")
-        predictor = ClassPredictor(n_dim, n_component, n_class)
+        predictor = ClassPredictor(n_dim, n_component, n_class).to(device)
 
         for e in range(config.epochs):
             p_losses = []
@@ -225,18 +228,24 @@ def discover(config):
             print("Epoch", e, "Predictor loss", p_losses)
 
     # discover infinitesimal generators via gradient descent
-    print("* Discovering lie algebra")
-    lie_algebra(config, predictor, loader)
+    if continuous:
+        print("* Discovering lie algebra")
+        lie_algebra(config, predictor, loader)
 
     # discrete
-    print("* Discovering cosets")
-    cosets(config, predictor, loader)
+    if discrete:
+        print("* Discovering cosets")
+        cosets(config, predictor, loader)
 
 
 if __name__ == '__main__':
     c = Config()
 
     if c.task == 'discover':
-        discover(c)
+        discover(c, True, True)
+    elif c.task == 'discover_algebra':
+        discover(c, True, False)
+    elif c.task == 'discover_cosets':
+        discover(c, False, True)
     else:
         print("Unknown task for Top Tagging. Downstream tasks are done in their own directory")
