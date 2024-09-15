@@ -121,7 +121,7 @@ class MNISTPredictor(nn.Module, Predictor):
     def loss(self, xx, yy):
         xx = xx.permute(0, 1, 3, 4, 2).flatten(0, 3)
         yy = yy.permute(0, 1, 3, 4, 2).flatten(0, 3)
-        return nn.functional.cross_entropy(xx, yy, weight=CLASS_WEIGHTS).to(device)
+        return nn.functional.cross_entropy(xx, yy).to(device)
 
     def name(self):
         return "mnist"
@@ -216,6 +216,7 @@ def discover(config):
         1, 2, NUM_CLASS, 1, config.standard_basis, 
         lr=5e-4, in_rad=IN_RAD, out_rad=OUT_RAD, 
         identity_in_rep=True, identity_out_rep=True, 
+        out_interpolation='nearest'
     )
 
     dataset = MNISTDataset(config.N, rotate=60)
@@ -289,7 +290,7 @@ def lie_gan_discover(config):
     dataset = MNISTDataset(config.N, rotate = 60)
     loader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
 
-    train_lie_gan(generator, discriminator, loader, config.epochs, 1e-4, 1e-3, 'Li_norm', 1e-2, 2, 0.0, 1.0, device, print_every=1)
+    train_lie_gan(generator, discriminator, loader, config.epochs, 1e-4, 1e-3, 'cosine', 1e-2, 2, 0.0, 1.0, device, print_every=1)
 
 
 def train(G, config):
@@ -359,6 +360,7 @@ def train(G, config):
         # we do not include background pixels
         nonbg = torch.sum(yy, dim=-1) != 0
 
+        print(torch.sum(nonbg) / nonbg.numel())
         total_acc += (y_pred_ind[nonbg] == y_true_ind[nonbg]).float().mean() * len(xx) / len(valid_dataset)
 
     print("Test Accuracy", total_acc)
