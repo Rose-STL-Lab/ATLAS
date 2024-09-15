@@ -13,7 +13,8 @@ device = get_device()
 
 IN_RAD = 14
 OUT_RAD = 14
-NUM_CLASS = 10
+CLASS_WEIGHTS = torch.tensor([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0.1], device=device)
+NUM_CLASS = len(CLASS_WEIGHTS)
 
 
 class MNISTFeatureField(R2FeatureField):
@@ -121,7 +122,7 @@ class MNISTPredictor(nn.Module, Predictor):
     def loss(self, xx, yy):
         xx = xx.permute(0, 1, 3, 4, 2).flatten(0, 3)
         yy = yy.permute(0, 1, 3, 4, 2).flatten(0, 3)
-        return nn.functional.cross_entropy(xx, yy).to(device)
+        return nn.functional.cross_entropy(xx, yy, weight=CLASS_WEIGHTS).to(device)
 
     def name(self):
         return "mnist"
@@ -167,7 +168,6 @@ class MNISTDataset(torch.utils.data.Dataset):
 
                 p = 32
                 y_curr = torch.zeros(NUM_CLASS, p, p)
-
                 y_curr[y] = 1
 
                 y_flat[:, r - p // 2: r + p // 2, c - p // 2: c + p // 2] = y_curr
@@ -177,6 +177,8 @@ class MNISTDataset(torch.utils.data.Dataset):
 
             self.x[i] = self.project(x_flat)
             self.y[i] = self.project(y_flat)
+            # label unmarked pixels as background
+            self.y[i][10] = torch.sum(self.y[i], dim=-3) == 0
 
     # equirectangular nearest neighbor
     def project(self, cylinder):
@@ -215,8 +217,7 @@ def discover(config):
     basis = GroupBasis(
         1, 2, NUM_CLASS, 1, config.standard_basis, 
         lr=5e-4, in_rad=IN_RAD, out_rad=OUT_RAD, 
-        identity_in_rep=True, identity_out_rep=True, 
-        out_interpolation='nearest'
+        identity_in_rep=True, identity_out_rep=True
     )
 
     dataset = MNISTDataset(config.N, rotate=60)
@@ -225,9 +226,10 @@ def discover(config):
     gdn.train()
 
 
+debug = 0
 def lie_gan_discover(config):
     """
-        In general, since the y labels are squares on the sphere, we do not expect 
+        In general, since the y labels are at fixed positions on the sphere, we do not expect 
         LieGan to be able to discover any (continuous) symmetries, since none exist
     """
     from SO3LieGan.gan import LieGenerator, LieDiscriminatorSegmentation
@@ -282,6 +284,15 @@ def lie_gan_discover(config):
         else:
             ret = torch.nn.functional.grid_sample(x_in, theta_phi_inv, mode='bilinear', align_corners=False) 
 
+        global debug
+        debug += 1
+        if debug == 20:
+            import matplotlib.pyplot as plt
+            # , y_ind = torch.max(ret[0], 
+            plt.imshow(yind.swapaxes(0, 2).cpu().detach())
+            plt.show()
+            plt.imshow(x_in[0].swapaxes(0, 2).cpu().detach())
+            plt.show()
         return ret
 
     generator = LieGenerator(1, transform, so3_basis).to(device)
@@ -290,7 +301,7 @@ def lie_gan_discover(config):
     dataset = MNISTDataset(config.N, rotate = 60)
     loader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
 
-    train_lie_gan(generator, discriminator, loader, config.epochs, 1e-4, 1e-3, 'cosine', 1e-2, 2, 0.0, 1.0, device, print_every=1)
+    train_lie_gan(generator, discriminator, loader, config.epochs, 1e-4, 1e-3, 'Li_norm', 1e-2, 2, 0.0, 1.0, device, print_every=1)
 
 
 def train(G, config):
@@ -320,6 +331,13 @@ def train(G, config):
     ], MNISTFeatureField, G)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
+    # we do not care about background
+    # this does mean that some background pixels will be marked somewhat randomly
+    # but that's generally not really an issue
+    # as really we treat this task more as classification than explcit segmentation
+    # the segmentation part is of course very easy (just white vs non white)
+    cw = torch.tensor(10 * [1] + [0], device=device)
+
     for e in range(config.epochs):
         total_loss = 0
         train_acc = 0
@@ -330,12 +348,13 @@ def train(G, config):
 
             y_pred = y_pred.permute(0, 2, 3, 1).flatten(0, 2)
             yy = yy.permute(0, 2, 3, 1).flatten(0, 2)
-            loss = torch.nn.functional.cross_entropy(y_pred, yy)
 
-            valid = torch.sum(yy, dim=-1) != 0
-            y_pred_ind = torch.max(y_pred, dim=-1, keepdim=True)[1][valid]
-            y_true_ind = torch.max(yy, dim=-1, keepdim=True)[1][valid]
-            train_acc += (y_pred_ind == y_true_ind).float().mean() / len(loader)
+            loss = torch.nn.functional.cross_entropy(y_pred, yy, weight=cw)
+
+            y_pred_ind = torch.max(y_pred, dim=-1, keepdim=True)[1]
+            y_true_ind = torch.max(yy, dim=-1, keepdim=True)[1]
+            non_bg = y_true_ind != 10
+            train_acc += (y_pred_ind[non_bg] == y_true_ind[non_bg]).float().mean() / len(loader)
 
             total_loss += loss / len(loader)
 
@@ -343,7 +362,7 @@ def train(G, config):
             loss.backward()
             optimizer.step()
 
-        torch.save(model, 'predictors/mnist_' + G + '.pt')
+        torch.save(model, 'predictors/mnist_downstream_' + G + '.pt')
         print("Loss", total_loss, "Train Accuracy", train_acc)
 
     total_acc = 0
@@ -358,9 +377,8 @@ def train(G, config):
         y_true_ind = torch.max(yy, dim=-1)[1]
 
         # we do not include background pixels
-        nonbg = torch.sum(yy, dim=-1) != 0
+        nonbg = y_true_ind != 10
 
-        print(torch.sum(nonbg) / nonbg.numel())
         total_acc += (y_pred_ind[nonbg] == y_true_ind[nonbg]).float().mean() * len(xx) / len(valid_dataset)
 
     print("Test Accuracy", total_acc)
