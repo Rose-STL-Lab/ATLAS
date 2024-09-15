@@ -300,7 +300,7 @@ def train(G, config):
     dataset = MNISTDataset(config.N, rotate=60)
     loader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
 
-    valid_dataset = MNISTDataset(10000, train=False, rotate=60)
+    valid_dataset = MNISTDataset(10000, train=False, rotate=180)
     valid_loader = torch.utils.data.DataLoader(valid_dataset, batch_size=config.batch_size, shuffle=True)
 
     model = ManifoldPredictor([
