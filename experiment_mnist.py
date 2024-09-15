@@ -14,7 +14,7 @@ device = get_device()
 IN_RAD = 14
 OUT_RAD = 14
 # background is not very important
-CLASS_WEIGHTS = torch.tensor([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0.1], device=device)
+CLASS_WEIGHTS = torch.tensor([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0.01], device=device)
 NUM_CLASS = len(CLASS_WEIGHTS)
 
 

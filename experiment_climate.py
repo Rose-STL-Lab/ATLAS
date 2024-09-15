@@ -44,11 +44,12 @@ class ClimatePredictor(torch.nn.Module, Predictor):
         self.network1 = CGNetModule(False, classes=config.label_length, channels=config.field_length).to(device)
         self.network2 = CGNetModule(False, classes=config.label_length, channels=config.field_length).to(device)
         self.network3 = CGNetModule(False, classes=config.label_length, channels=config.field_length).to(device)
+        self.network4 = CGNetModule(False, classes=config.label_length, channels=config.field_length).to(device)
         self.optimizer = Adam(self.parameters(), lr=1e-3)   
 
     def run(self, x):
         chart_ret = []
-        for i, net in enumerate([self.network1, self.network2, self.network3]):
+        for i, net in enumerate([self.network1, self.network2, self.network3, self.network4]):
             ret = net(x[:, i])
 
             # clip to the out radius in the case that it's smaller than in radius
