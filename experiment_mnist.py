@@ -13,9 +13,7 @@ device = get_device()
 
 IN_RAD = 14
 OUT_RAD = 14
-# background is not very important
-CLASS_WEIGHTS = torch.tensor([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0.01], device=device)
-NUM_CLASS = len(CLASS_WEIGHTS)
+NUM_CLASS = 10
 
 
 class MNISTFeatureField(R2FeatureField):
@@ -180,10 +178,6 @@ class MNISTDataset(torch.utils.data.Dataset):
             self.x[i] = self.project(x_flat)
             self.y[i] = self.project(y_flat)
 
-            # label unlabelled regions as background
-            unlabeled = torch.sum(self.y[i], dim=0) == 0
-            self.y[i, 10][unlabeled] = 1
-
     # equirectangular nearest neighbor
     def project(self, cylinder):
         ret = torch.zeros((cylinder.shape[0], self.w, self.h), device=device)         
@@ -335,7 +329,7 @@ def train(G, config):
 
             y_pred = y_pred.permute(0, 2, 3, 1).flatten(0, 2)
             yy = yy.permute(0, 2, 3, 1).flatten(0, 2)
-            loss = torch.nn.functional.cross_entropy(y_pred, yy, weight=CLASS_WEIGHTS)
+            loss = torch.nn.functional.cross_entropy(y_pred, yy)
 
             valid = torch.sum(yy, dim=-1) != 0
             y_pred_ind = torch.max(y_pred, dim=-1, keepdim=True)[1][valid]
@@ -359,10 +353,11 @@ def train(G, config):
         y_pred = y_pred.permute(0, 2, 3, 1).flatten(0, 2)
         yy = yy.permute(0, 2, 3, 1).flatten(0, 2)
 
-        y_pred_ind = torch.max(y_pred, dim=-1, keepdim=True)[1]
-        y_true_ind = torch.max(yy, dim=-1, keepdim=True)[1]
+        y_pred_ind = torch.max(y_pred, dim=-1)[1]
+        y_true_ind = torch.max(yy, dim=-1)[1]
+
         # we do not include background pixels
-        nonbg = y_true_ind != 10
+        nonbg = torch.sum(yy, dim=-1) != 0
 
         total_acc += (y_pred_ind[nonbg] == y_true_ind[nonbg]).float().mean() * len(xx) / len(valid_dataset)
 
