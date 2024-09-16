@@ -97,7 +97,6 @@ class LieDiscriminatorSegmentation(nn.Module):
 
     def forward(self, x, y):
         _, y_ind = torch.max(y, dim=-3)
-        y_ind = torch.sum(y, dim=-3) == 0
         y_emb = self.emb(y_ind).swapaxes(-1, -2).swapaxes(-2, -3)
         xy = torch.cat((x, y_emb), dim=-3)
         raw = self.model(xy)

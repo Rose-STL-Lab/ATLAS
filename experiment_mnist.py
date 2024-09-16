@@ -160,7 +160,7 @@ class MNISTDataset(torch.utils.data.Dataset):
             x_flat = torch.zeros(1, self.w, 32, device=device)
             y_flat = torch.zeros(NUM_CLASS, self.w, 32, device=device)
 
-            for jp, (r, c) in list(zip(j, starts)):
+            for jp, (r, c) in list(zip(j, starts))[1:2]:
                 theta = h(i + jp) % (2 * rotate) - rotate if rotate else 0
                 x, y = self.dataset[jp]
                 x_curr = torchvision.transforms.functional.rotate(x, theta)
@@ -286,7 +286,7 @@ def lie_gan_discover(config):
 
         global debug
         debug += 1
-        if debug == 20:
+        if debug == -1:
             import matplotlib.pyplot as plt
             # , y_ind = torch.max(ret[0], 
             plt.imshow(yind.swapaxes(0, 2).cpu().detach())
@@ -331,12 +331,12 @@ def train(G, config):
     ], MNISTFeatureField, G)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    # we do not care about background
+    # we basically do not care about background
     # this does mean that some background pixels will be marked somewhat randomly
     # but that's generally not really an issue
     # as really we treat this task more as classification than explcit segmentation
     # the segmentation part is of course very easy (just white vs non white)
-    cw = torch.tensor(10 * [1] + [0], device=device)
+    cw = torch.tensor(10 * [1] + [0.005], device=device)
 
     for e in range(config.epochs):
         total_loss = 0

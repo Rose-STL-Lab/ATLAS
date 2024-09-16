@@ -1,12 +1,540 @@
 [monocurl version: "0.1.0" type: "scene"]
 
 [slide name: "config"]
-	background = BLACK
+	background = WHITE
 	camera = Camera:
 		near: 0.1 
 		far: 10
 		up: {0,1,0}
 		origin: {0,0,4}
 		target: {0,0,0}
-[slide name: "slide_1"]
+		
 	
+	func Box(text, color, tc, w, h, tag, pos) = identity:
+		var ret = {}
+		ret += Rect:
+			center: pos
+			width: w
+			height: h
+			tag: tag
+			stroke: BLACK
+			fill: color
+		ret += Centered:
+			mesh: Text:
+				text: "\begin{center} %{text} \end{center}"
+				scale: 0.5
+				stroke: CLEAR
+				fill: tc
+			at: pos
+		element: ret
+	
+	let mat_size = 0.12
+	func Matrix(mat, tag) = identity:
+		let size = mat_size
+		func val_to_col(val) = identity:
+			let keys = {1: BLUE, 1.5: WHITE, 2: RED}
+			element: keyframe_lerp(keys, val + 1.5)
+			
+		var sum = 0
+		var ret = {}
+		let height = len(mat)
+		let width = len(mat[0])
+		for i in 0 :< len(mat)
+			for j in 0 :< len(mat[i])
+				let re = mat[i][j]
+				ret += Rect:
+					center: {(j + 0.5) * size, (height - i - 0.5) * size, 0}
+					width: size
+					height: size
+					tag: tag
+					stroke: CLEAR
+					fill: val_to_col(re)
+		ret += Rect:
+			center: {width * size / 2, height * size / 2, 0}
+			width: width * size
+			height: height * size
+			tag: tag
+			stroke: BLACK
+		element: ret
+	
+	let uv_base = ColorGrid:
+		x_min: 0
+		x_max: 1
+		y_min: 0
+		y_max: 1
+		x_step: 0.02
+		y_step: 0.02
+		tag: {}
+		func color(pos) = identity:
+			let r = round(pos[0] / 0.05)
+			let c = round(pos[1] / 0.05)
+			var col = {0.2, 0.6, 1, 1}
+			
+			element: GRAY
+		color_at(pos): color(pos)
+		stroke: CLEAR
+	let r1 = 0.75
+	let r2 = 0.35
+	let colors = {-10: GRAY, 0.2:YELLOW, 0.5: ORANGE, 0.6:RED}
+	func torus_map(u_raw, v_raw) = identity:
+		let u = u_raw * TAU
+		let v = v_raw * TAU
+		let x = (r1 + r2 * cos(v)) * cos(u)
+		let y = (r1 + r2 * cos(v)) * sin(u)
+		let z = r2 * sin(v)
+		
+		element: {x, z, y}
+	func Torus(mag(u, v), pos) = identity:
+		var torus = ColorMapped:
+			mesh: uv_base
+			color_map(point): identity:
+				let m = mag(point[0], point[1])
+				element: keyframe_lerp(colors, m)
+		torus = PointMapped:
+			mesh: torus
+			point_map(point): torus_map(point[0], point[1])
+		torus = AddedGloss:
+			mesh: torus
+		torus = Rotated:
+			mesh: torus
+			rotation: {0.9, 0, 0}
+		torus = Centered:
+			mesh: torus
+			at: pos
+		element: torus
+	
+	func Chart(tag, pos, mag(u, v), normal) = identity:	
+		var ret = {}
+		ret += Rect:
+			center: {0, 0, 0}
+			width: 1
+			height: 1
+			tag: tag
+			stroke: BLUE
+			fill: {1, 1, 1, 0.3}
+		/* grid lines */
+		let count = 7
+		for i in 0 :< count
+			let pos = (i + 1) / (count + 1) - 0.5
+			ret += Line:
+				start: {-0.5, pos, 0}
+				end: {0.5, pos, 0}
+				tag: tag
+				stroke: LIGHT_GRAY
+			ret += Line:
+				start: {pos, -0.5, 0}
+				end: {pos, 0.5, 0}
+				tag: tag
+				stroke: LIGHT_GRAY
+		/* main circle */
+		let r = 0.35
+		let circle = ColorGrid:
+			x_min: -0.5
+			x_max: 0.5
+			y_min: -0.5
+			y_max: 0.5
+			x_step: 0.010001
+			y_step: 0.010001
+			mask(pos): norm(pos) < r
+			tag: tag
+			color_at(pos): keyframe_lerp(colors, mag(pos[0], pos[1]))
+			stroke: CLEAR
+		ret += Circle:
+			center: ORIGIN
+			radius: r
+			tag: tag
+			stroke: DARK_GRAY
+			fill: DARK_GRAY
+		ret += circle
+	
+		ret = Shifted:
+			mesh: ret
+			delta: pos
+		element: ret
+[slide name: "slide_1"]
+	/* Infinitesimal Generators */
+	
+	tree basis_box = Box:
+		text: "\textbf{Basis} \\ $(B_1, B_2, \ldots, B_k)$ "
+		color: BLUE
+		tc: WHITE
+		w: 3
+		h: 1
+		tag: {}
+		pos: {-1.75, 1, 0}
+	tree coeff_box = Box:
+		text: "\textbf{Random Coefficients} \\ $\eta \sim \mathcal{N}(0, I) $ "
+		color: WHITE
+		tc: BLACK
+		w: 3
+		h: 1
+		tag: {}
+		pos: {-1.75, -1, 0}
+	
+	tree ds_box = Box:
+		text: "\textbf{Dataset}"
+		color: GREEN
+		tc: BLACK
+		w: 0.8
+		h: 0.5
+		tag: {}
+		pos: {2, 1.2, 0}
+	
+	tree loss_box = Box:
+		text: "\textbf{Loss} \\ $| f(g * x) - g * f(x) |$"
+		color: RED
+		tc: WHITE
+		w: 2
+		h: 1
+		tag: {}
+		pos: {2, 0, 0}
+	
+	func Term(tex) = Tex:
+		tex: tex
+		scale: 0.5
+		stroke: CLEAR
+		fill: BLACK
+	
+	tree eqn = {}
+	eqn += Term("\exp \big( \pin1{\eta_1}")
+	eqn = {} + Centered:
+		mesh: eqn
+		at: {-3, 0, 0}
+	
+	eqn += Matrix:
+		mat: {{0, 1, 0}, {-1, 0, 0}, {0, 0, 0}}
+		tag: {-1}
+	eqn += Term("+ \ \pin2{\eta_2}")
+	eqn += Matrix:
+		mat: {{0, 0, 1}, {0, 0, 0}, {-1, 0, 0}}
+		tag: {-2}
+	eqn += Term("\ldots \ \pin3{\eta_k}")
+	eqn += Matrix:
+		mat: {{0, 0, 0}, {0, 0, 1}, {0, -1, 0}}
+		tag: {-3}
+	eqn += Term:
+		tex: "\big) = "
+	eqn += Matrix:
+		mat: {{-1, -0.3, 0}, {0.3, -1, 0}, {0, 0, 1}}
+		tag: {}
+	eqn += Tex:
+		tex: "\rightarrow{\bf{g}}"
+		scale: 0.5
+		stroke: CLEAR
+		fill: BLACK
+	eqn = XStack:
+		mesh_vector: eqn
+		align: center
+	
+	
+	tree down_arrows = {}
+	tree up_arrows = {}
+	
+	let r_t = mesh_up(coeff_box)
+	let b_b = mesh_down(basis_box)
+	for i in {1, 2, 3}
+		let m = mesh_select:
+			root: eqn
+			tag_predicate(tag): -i in tag
+		let n = mesh_select:
+			root: eqn
+			tag_predicate(tag): i in tag
+		let mx = (mesh_center(m))[0]
+		let mt = mesh_up(m)
+		let nx = (mesh_center(n))[0]
+		let nb = mesh_down(n)
+		up_arrows += Arrow:
+			start: {mx, b_b - 0.05, 0}
+			end: {mx, mt + 0.05, 0}
+			tag: {}
+			stroke: CLEAR
+			fill: LIGHT_GRAY
+		down_arrows += Arrow:
+			start: {nx, r_t + 0.05, 0}
+			end: {nx, nb - 0.05, 0}
+			tag: {}
+			stroke: CLEAR
+			fill: LIGHT_GRAY
+	
+	tree x_arrow = Tex:
+		tex: "\stackrel{\downarrow}{\raisebox{-1.2ex}{\bf x}}"
+		scale: 0.5
+		stroke: CLEAR
+		fill: BLACK
+	x_arrow = MovedNextTo:
+		mesh: x_arrow
+		ref: ds_box
+		dir: DOWN
+	
+	
+	p += Set:
+		vars&: {basis_box, coeff_box, eqn, up_arrows, down_arrows, ds_box, loss_box, x_arrow}
+	basis_box = coeff_box = eqn = up_arrows = down_arrows = ds_box = loss_box = x_arrow = {}
+	
+	p += Wait(1)
+	p += Set:
+		vars&: {basis_box, coeff_box, eqn, up_arrows, down_arrows, ds_box, loss_box, x_arrow}
+[slide name: "slide_2"]
+	/* Cosets */
+	
+	tree coset_box = Box:
+		text: "\textbf{Cosets} \\ $C_1, C_2, \ldots, C_K$"
+		color: BLUE
+		tc: WHITE
+		w: 1.5
+		h: 1.5
+		tag: {}
+		pos: {-2.5, 0, 0}
+	
+	ds_box = Box:
+		text: "\textbf{Dataset}"
+		color: GREEN
+		tc: BLACK
+		w: 0.8
+		h: 0.5
+		tag: {}
+		pos: {2, 1.2, 0}
+	
+	loss_box = Box:
+		text: "\textbf{Loss} \\ $ \sum| f(g_{i} * x) - g_{i} * f(x) |$"
+		color: RED
+		tc: WHITE
+		w: 2
+		h: 1
+		tag: {}
+		pos: {2, 0, 0}
+	
+	x_arrow = Tex:
+		tex: "\stackrel{\downarrow}{\raisebox{-1.2ex}{\bf x}}"
+		scale: 0.5
+		stroke: CLEAR
+		fill: BLACK
+	x_arrow = MovedNextTo:
+		mesh: x_arrow
+		ref: ds_box
+		dir: DOWN
+	tree g_arrow = Tex:
+		tex: "\rightarrow{\bf{\{g_i\}_{i = 1}^{K}}}"
+		scale: 0.5
+		stroke: CLEAR
+		fill: BLACK
+	g_arrow = MovedNextTo:
+		mesh: g_arrow
+		ref: loss_box
+		dir: LEFT
+	
+	var matrices = {}
+	matrices += Matrix:
+		mat: {{1, 0}, {0, 1}}
+		tag: {0}
+	matrices += Tex:
+		tex: "\vdots"
+		scale: 1
+		stroke: CLEAR
+		fill: BLACK
+	matrices += Matrix:
+		mat: {{-1, 0}, {0, 1}}
+		tag: {1}
+	matrices += Matrix:
+		mat: {{0.707, -0.707}, {-0.707, 0.707}}
+		tag: {2}
+	
+	matrices = YStack:
+		mesh_vector: matrices
+		align: center
+	matrices = Centered:
+		mesh: matrices
+		at: {-1.2, 0,0 }
+	eqn = {}
+	eqn += matrices
+	eqn += Text:
+		text: "$\to$ normalize"
+		scale: 0.5
+		stroke: CLEAR
+		fill: BLACK
+	eqn = XStack:
+		mesh_vector: eqn
+		align: center
+	
+	tree right_arrows = {}
+	
+	let c_r = mesh_right(coset_box)
+	for i in {0, 1, 2}
+		let m = mesh_select:
+			root: eqn
+			tag_predicate(tag): i in tag
+		let my = (mesh_center(m))[1]
+		let ml = mesh_left(m)
+		right_arrows += Arrow:
+			start: {c_r + 0.05, my, 0}
+			end: {ml - 0.05, my, 0}
+			tag: {}
+			stroke: CLEAR
+			fill: LIGHT_GRAY
+	
+	
+	p += Set:
+		vars&: {ds_box, coset_box, loss_box, g_arrow, x_arrow, eqn, right_arrows}
+	
+	p += Wait(1)
+	
+	ds_box = coset_box = loss_box = g_arrow = x_arrow = eqn = right_arrows = {}
+	p += Set:
+		vars&: {ds_box, coset_box, loss_box, g_arrow, x_arrow, eqn, right_arrows}
+[slide name: "slide_3"]
+	/* Sigma depiction (heat experiment) */
+	
+	func f(x, y) = identity:
+		let u = x * TAU
+		let v = y * TAU
+		let x = r1 * cos(u)
+		let y = r1 * sin(u)
+		let z = r2 * sin(v)
+		let a = 4
+		element: norm({-(y + x) * (-z + y + x) / a, z + (y - x) / a, z})
+	
+	/* not actual heat simulation, but average of neighbors is good enough */
+	func fp(u, v) = identity:
+		var ret = 0
+		let d = 0.125
+		for i in {-d, 0, d}
+			for j in {-d, 0, d}
+				ret += f(u + i, v + j) / 9
+		element: ret
+	
+	
+	tree left = Torus:
+		mag(u, v): f(u, v)
+		pos: {-2, 0, 0}
+	tree right = Torus:
+		mag(u, v): fp(u, v)
+		pos: {2, 0, 0}
+	
+	func Tx(tex, at) = identity:
+		var ret = Tex:
+			tex: tex
+			scale: 0.75
+			stroke: BLACK
+			fill: BLACK
+		ret = Centered:
+			mesh: ret
+			at: at
+		element: ret
+	var label = Tx:
+		tex: "\sigma"
+		at: {0, 0.15, 0}
+	var arrow = Arrow:
+		start: {-0.5,0, 0}
+		end: {0.5,0,0}
+		normal: FORWARD
+		path_arc: -0.125
+		tag: {}
+		stroke: CLEAR
+		fill: BLACK
+	tree la = {arrow, label}
+	
+	p += Set:
+		vars&: {left, right, la}
+	left = right = la = {}
+	p += Wait(1)
+	p += Set:
+		vars&: {left, right, la}
+[slide name: "slide_4"]
+	/* Atlas, proj, and support function */
+	left = Torus:
+		mag(u, v): f(u, v)
+		pos: {-2, 0, 0}
+	right = Torus:
+		mag(u, v): fp(u, v)
+		pos: {2, 1, 0}
+	
+	
+	
+	
+	/* torus, proj and proj labels, and charts */  
+	func ProjTorus(x) = 0
+	
+	
+	tree charts = {}
+	tree proj_arrows = {}
+	tree proj_labels = {}
+[slide name: "slide_6"]
+	/* Atlas Equivariance Commutative Diagram */
+	
+	tree x = Chart:
+		tag: {}
+		pos: {-1.25, 1.25, 0}
+		mag(u, v): f(u, v)
+		normal: FORWARD
+	tree fx = Chart:
+		tag: {}
+		pos: {-1.25, -1.25, 0}
+		mag(u, v): fp(u, v)
+		normal: FORWARD
+	tree gx = Chart:
+		tag: {}
+		pos: {1.25, 1.25, 0}
+		mag(u, v): f(-v, u)
+		normal: FORWARD
+	tree fgx = Chart:
+		tag: {}
+		pos: {1.25, -1.25, 0}
+		mag(u, v): fp(-v, u)
+		normal: FORWARD
+	
+	tree arrows = {}
+	arrows += Arrow:
+		start: x
+		end: fx
+		tag: {}
+		stroke: CLEAR
+		fill: DARK_GRAY
+	arrows += Arrow:
+		start: x
+		end: gx
+		tag: {}
+		stroke: CLEAR
+		fill: DARK_GRAY
+	arrows += Arrow:
+		start: fx
+		end: fgx
+		tag: {}
+		stroke: CLEAR
+		fill: DARK_GRAY
+	arrows += Arrow:
+		start: gx
+		end: fgx
+		tag: {}
+		stroke: CLEAR
+		fill: DARK_GRAY
+	tree labels = {}
+	labels += Label:
+		mesh: arrows
+		str: "$g$"
+		scale: 0.75
+		dir: UP
+		stroke: CLEAR
+		fill: BLACK
+	labels += Label:
+		mesh: arrows
+		str: "$\sigma_i$"
+		scale: 0.75
+		dir: LEFT
+		stroke: CLEAR
+		fill: BLACK
+	labels += Label:
+		mesh: arrows
+		str: "$g$"
+		scale: 0.75
+		dir: DOWN
+		stroke: CLEAR
+		fill: BLACK
+	labels += Label:
+		mesh: arrows
+		str: "$\sigma_i$"
+		scale: 0.75
+		dir: RIGHT
+		stroke: CLEAR
+		fill: BLACK
+	p += Set:
+		vars&: {x, fx, gx, fgx, arrows, labels}
