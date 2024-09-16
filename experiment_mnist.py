@@ -160,7 +160,7 @@ class MNISTDataset(torch.utils.data.Dataset):
             x_flat = torch.zeros(1, self.w, 32, device=device)
             y_flat = torch.zeros(NUM_CLASS, self.w, 32, device=device)
 
-            for jp, (r, c) in list(zip(j, starts))[1:2]:
+            for jp, (r, c) in list(zip(j, starts)):
                 theta = h(i + jp) % (2 * rotate) - rotate if rotate else 0
                 x, y = self.dataset[jp]
                 x_curr = torchvision.transforms.functional.rotate(x, theta)
