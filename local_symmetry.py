@@ -53,20 +53,21 @@ class LocalTrainer:
             # train predictor
             p_losses = []
             if self.predictor.needs_training() and not self.config.reuse_predictor:
-                for xx, yy in tqdm.tqdm(loader):
-                    xff = self.ff(xx)
-                    yff = self.ff(yy)
+                for _ in range(20):
+                    for xx, yy in tqdm.tqdm(loader):
+                        xff = self.ff(xx)
+                        yff = self.ff(yy)
 
-                    # relying on basis for radius is ugly ...
-                    y_pred = self.predictor.run(xff.regions(self.basis.in_rad))
-                    y_true = yff.regions(self.basis.out_rad)
+                        # relying on basis for radius is ugly ...
+                        y_pred = self.predictor.run(xff.regions(self.basis.in_rad))
+                        y_true = yff.regions(self.basis.out_rad)
 
-                    p_loss = self.predictor.loss(y_pred, y_true)
-                    p_losses.append(float(p_loss.detach().cpu()))
+                        p_loss = self.predictor.loss(y_pred, y_true)
+                        p_losses.append(float(p_loss.detach().cpu()))
 
-                    self.predictor.optimizer.zero_grad()
-                    p_loss.backward()
-                    self.predictor.optimizer.step()
+                        self.predictor.optimizer.zero_grad()
+                        p_loss.backward()
+                        self.predictor.optimizer.step()
 
             p_losses = np.mean(p_losses) if len(p_losses) else 0
 
