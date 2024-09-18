@@ -103,7 +103,7 @@
 			fill: DARK_GRAY
 		ret += Shifted:
 			mesh: circle
-			delta: {0, 0, 0.0035}
+			delta: {0, 0, 0.0036}
 		let k_hat = normalize(cross_product(j_hat, i_hat))
 		ret = PointMapped:
 			mesh: ret
@@ -480,31 +480,31 @@
 			fill: {g, g, g, 0.4}
 	
 	tree projs = {}
-	projs += Tex:
-		tex: "\text{proj}_1 \to"
+	projs += Text:
+		text: "\begin{center} \raisebox{0.9ex}{$\uparrow$} \\ $\varphi_{3}^{-1*}$ \end{center}"
 		scale: 0.45
 		stroke: BLACK
 		fill: BLACK
 	projs += projs[0]
 	projs[0] = Shifted:
 		mesh: projs[0]
-		delta: {-2.05, 1.435, 0}
+		delta: {-1.95, 1.55, 0}
 	projs[0] = Rotated:
 		mesh: projs[0]
-		rotation: {0, 0, 1.55}
+		rotation: {0.5, 0.3, 0}
 	projs[1] = Shifted:
 		mesh: projs[1]
-		delta: {1.5, 1.43, 0}
+		delta: {1.65, 1.55, 0}
 	projs[1] = Rotated:
 		mesh: projs[1]
-		rotation: {0, 0, 1.38}
+		rotation: {0.6, -0.2, 0}
 	
 	tree labels = {} + Tx:
 		tex: "\sigma \mapsto"
 		scale: 2.25
 		at: {0, -1.7, 0}
 	labels += Tx:
-		tex: "\sigma_1"
+		tex: "\sigma_3"
 		scale: 0.65
 		at: {0.1, 2.05, 0}
 	labels += Tx:
@@ -512,7 +512,7 @@
 		scale: 0.65
 		at: {-0.1, 0.65, 0}
 	labels += Tx:
-		tex: "\sigma_3"
+		tex: "\sigma_1"
 		scale: 0.65
 		at: {0.2, -0.95, 0}
 	p += Set:
@@ -529,25 +529,25 @@
 		tag: {}
 		pos: {-1.25, 1.25, 0}
 		mag(u, v): f(u, v)
-		i_hat: RIGHT
+		i_hat: LEFT
 		j_hat: UP
 	tree fx = Chart:
 		tag: {}
 		pos: {-1.25, -1.25, 0}
 		mag(u, v): fp(u, v)
-		i_hat: RIGHT
+		i_hat: LEFT
 		j_hat: UP
 	tree gx = Chart:
 		tag: {}
 		pos: {1.25, 1.25, 0}
 		mag(u, v): f(-v, u)
-		i_hat: RIGHT
+		i_hat: LEFT
 		j_hat: UP
 	tree fgx = Chart:
 		tag: {}
 		pos: {1.25, -1.25, 0}
 		mag(u, v): fp(-v, u)
-		i_hat: RIGHT
+		i_hat: LEFT
 		j_hat: UP
 	arrows = {}
 	arrows += Arrow:
