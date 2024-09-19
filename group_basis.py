@@ -4,7 +4,6 @@ import torch.nn as nn
 from utils import get_device, transform_atlas
 device = get_device()
 
-DEBUG = 0
 
 def normalize(x):
     # from lie gan
@@ -16,7 +15,7 @@ def normalize(x):
 
 class GroupBasis(nn.Module):
     def __init__(
-            self, in_dim, man_dim, out_dim, num_basis, standard_basis, 
+            self, in_dim, man_dim, out_dim, num_basis, standard_basis, num_cosets=32, 
             in_rad=10, out_rad=5, lr=5e-4, r1=0.05, r2=1, r3=0.35,
             identity_in_rep=False, identity_out_rep=False, in_interpolation='bilinear', out_interpolation='bilinear', dtype=torch.float32,
     ):
@@ -36,19 +35,22 @@ class GroupBasis(nn.Module):
         self.identity_out_rep = identity_out_rep
 
         self.num_basis = num_basis
+        self.num_cosets = num_cosets
         self.dtype = dtype
         self.r1 = r1
         self.r2 = r2
         self.r3 = r3
         self.standard_basis = standard_basis
 
-        # self.lie_basis = nn.Parameter(torch.empty((num_basis, man_dim, man_dim), dtype=dtype).to(device))
+        self.lie_basis = nn.Parameter(torch.empty((num_basis, man_dim, man_dim), dtype=dtype).to(device))
         self.in_basis = nn.Parameter(torch.empty((num_basis, in_dim, in_dim), dtype=dtype).to(device))
         self.out_basis = nn.Parameter(torch.empty((num_basis, out_dim, out_dim), dtype=dtype).to(device))
 
-        # for tensor in [self.in_basis, self.lie_basis, self.out_basis]:
-            # nn.init.normal_(tensor, 0, 0.02)
-        self.lie_basis = torch.tensor([[[1, 0], [0, 0]]])
+        for tensor in [self.in_basis, self.lie_basis, self.out_basis]:
+            nn.init.normal_(tensor, 0, 0.02)
+
+        self.cosets = nn.Parameter(torch.empty((num_cosets, man_dim, man_dim), dtype=dtype).to(device))
+        nn.init.normal_(self.cosets, 0, 0.02)
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
     
@@ -87,7 +89,7 @@ class GroupBasis(nn.Module):
 
         bs = x.batch_size()
 
-        coeffs = 0 * self.sample_coefficients((bs, x.num_charts())) + 1
+        coeffs = self.sample_coefficients((bs, x.num_charts())) 
 
         def sample(raw):
             return torch.matrix_exp(torch.sum(raw * coeffs.unsqueeze(-1).unsqueeze(-1), dim=-3))
@@ -113,94 +115,30 @@ class GroupBasis(nn.Module):
 
         y_atlas_true = pred.run(g_x_atlas)
 
-        global DEBUG
-        DEBUG += 1
-        if DEBUG >= 1:
-            import matplotlib.pyplot as plt
-            import math
-            transforms = torch.tensor([
-                [[-0.1, 0], [0, -0.1]],
-                [[0, 0], [0.2, 0]],
-                [[0, 0.1], [-0.1, 0]]
-            ], device=device)
-            
-            s = lambda x : sample(x)
-            x = x_atlas
-            _, fx = torch.max(pred.run(x_atlas), dim=-3)
+        return pred.loss(y_atlas_true, g_y_atlas)
 
-            g1x = transform_atlas(s(transforms[0]), sampled_in, x_atlas, 'bilinear')
-            _, fg1x = torch.max(pred.run(g1x), dim=-3)
-            _, g1fx = torch.max(transform_atlas(s(transforms[0]), sampled_out, y_atlas, 'bilinear'), dim=-3)
-            g1 = [g1x, fg1x, g1fx, "scale"]
+    def coset_step(self, x, pred):
+        # for now, can only handle identity in and out rep
+        assert self.identity_in_rep and self.identity_out_rep
 
-            g2x = transform_atlas(s(transforms[1]), sampled_in, x_atlas, 'bilinear')
-            _, fg2x = torch.max(pred.run(g2x), dim=-3)
-            _, g2fx = torch.max(transform_atlas(s(transforms[1]), sampled_out, y_atlas, 'bilinear'), dim=-3)
-            g2 = [g2x, fg2x, g2fx, "shear"]
+        bs = x.batch_size()
 
-            g3x = transform_atlas(s(transforms[2]), sampled_in, x_atlas, 'bilinear')
-            _, fg3x = torch.max(pred.run(g3x), dim=-3)
-            _, g3fx = torch.max(transform_atlas(s(transforms[2]), sampled_out, y_atlas, 'bilinear'), dim=-3)
-            g3 = [g3x, fg3x, g3fx, "rot"]
+        coeffs = self.sample_coefficients((bs, x.num_charts())) 
 
-            fig, axs = plt.subplots(3, 4, figsize=(10, 5))
+        cosets = self.cosets.tile(bs, 1, 1)
+        in_rep = torch.eye(self.in_dim, device=device).unsqueeze(0).unsqueeze(0).repeat(bs * self.num_cosets, x.num_charts(), 1, 1)
+        out_rep = torch.eye(self.out_dim, device=device).unsqueeze(0).unsqueeze(0).repeat(bs * self.num_cosets, x.num_charts(), 1, 1)
 
-            axs = axs.reshape(3, 4)
+        x_atlas = x.regions(self.in_rad)
+        g_x_atlas = transform_atlas(cosets, in_rep, x_atlas, self.in_interpolation)
 
-            p = 175
-            def r(x):
-                return x[x.shape[0] // 2 - p: x.shape[0] // 2 + p, x.shape[1] // 2 - p: x.shape[1] // 2 + p]
+        y_atlas = pred.run(x_atlas)
+        if pred.returns_logits():
+            y_atlas = torch.nn.functional.softmax(y_atlas, dim=-3)
+        y_atlas = y_atlas.detach()
+        g_y_atlas = transform_atlas(cosets, out_rep, y_atlas, self.out_interpolation)
 
-            low = x[0, 0, 0].min()
-            hig = x[0, 0, 0].max()
-
-            axs[0, 0].imshow(r(x[0, 0, 0]).detach().cpu().numpy(), cmap='gray', vmin=low, vmax=hig)
-            axs[0, 0].set_title(f'x')
-            axs[0, 0].axis('off')
-
-            axs[1, 0].imshow(r(fx[0, 0]).detach().cpu().numpy(), cmap='viridis')
-            axs[1, 0].set_title(f'f(x)')
-            axs[1, 0].axis('off')
-            axs[2, 0].axis('off')
-
-            for i, g in enumerate([g1, g2, g3]):
-                axs[0, i + 1].imshow(r(g[0][0, 0, 0]).detach().cpu().numpy(), cmap='gray', vmin=low, vmax=hig)
-                axs[0, i + 1].set_title(f'{g[3]} x')
-                axs[0, i + 1].axis('off')
-
-                axs[1, i + 1].imshow(r(g[1][0, 0]).detach().cpu().numpy(), cmap='viridis')
-                axs[1, i + 1].set_title(f'f({g[3]} x)')
-                axs[1, i + 1].axis('off')
-
-                axs[2, i + 1].imshow(r(g[2][0, 0]).detach().cpu().numpy(), cmap='viridis')
-                axs[2, i + 1].set_title(f'{g[3]} f(x)')
-                axs[2, i + 1].axis('off')
-
-            # Plot original chart
-            """
-            axs[1, 1].imshow(gx[b, n, d].detach().cpu().numpy(), cmap='viridis')
-            axs[1, 1].set_title(f'g * x')
-            axs[1, 1].axis('off')
-
-            # Plot original chart
-            axs[0, d].imshow(org_org[b, n, d].detach().cpu().numpy(), cmap='viridis')
-            axs[0, d].set_title(f'f(x)')
-            axs[0, d].axis('off')
-
-            # Plot original chart
-            axs[1, d].imshow(original_charts[b, n, d].detach().cpu().numpy(), cmap='viridis')
-            axs[1, d].set_title(f'g * f(x)')
-            axs[1, d].axis('off')
-
-            # Plot transformed chart
-            axs[2, d].imshow(transformed_charts[b, n, d].detach().cpu().numpy(), cmap='viridis')
-            axs[2, d].set_title(f'f(g * x)')
-            axs[2, d].axis('off')
-            """
-
-            plt.tight_layout()
-            plt.savefig("test.svg")
-            plt.show()
+        y_atlas_true = pred.run(g_x_atlas)
 
         return pred.loss(y_atlas_true, g_y_atlas)
 

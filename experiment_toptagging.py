@@ -110,7 +110,7 @@ def lie_algebra(config, predictor, loader):
 
 
 def cosets(config, predictor, loader):
-    max_discrete = 4
+    max_discrete = 16
 
     # discover discrete generators
     matrices = torch.nn.Parameter(torch.zeros(256, 4, 4, device=device))
@@ -154,26 +154,32 @@ def cosets(config, predictor, loader):
             inds = np.argsort(average_losses)
             normalized = normalized[inds].detach().cpu()
 
+            # heuristic for being in identity component 
+            # basically check if the difference is in lorentz group (heuristically)
+            # and that we dont have any time reversal or parity
             def relates(a, b):
                 diff = torch.linalg.inv(a) @ b
-                if torch.det(diff) < 0:
+                if torch.det(diff) < 0 or diff[0][0] < 0:
                     return False
 
-                # time reversal
-                if diff[0][0] < 0:
-                    return False
+                def minkowski(a):
+                    return -a[0] * a[0] + a[1] * a[1] + a[2] * a[2] + a[3] * a[3]
+
+                for i in range(5):
+                    u = torch.randn(4, device=device)
+                    ref = minkowski(u)
+                    refp = minkowski(diff @ u)
+                    if torch.abs(ref - refp) > 0.1:
+                        return False
 
                 return True
 
             # print out highest matrices that do not relate (by SO+(1, 3)) to one another
-            # This dataset does not have any time reversal, so we cannot find P or PT
+            # This dataset does not have any time reversal, so we cannot find T or PT
             # but we are generally able to find P
             final = []
 
-            for mat in normalized:
-                if len(final) == max_discrete:
-                    break
-
+            for mat in normalized[:max_discrete]:
                 for f in final:
                     if relates(f, mat):
                         break

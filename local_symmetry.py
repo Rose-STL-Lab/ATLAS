@@ -45,34 +45,42 @@ class LocalTrainer:
             torch.autograd.set_detect_anomaly(True)
             torch.set_printoptions(precision=9, sci_mode=False)
 
-    def train(self):
+    def loader(self):
         collate_fn = self.dataset.collate if hasattr(self.dataset, 'collate') else None
         loader = torch.utils.data.DataLoader(self.dataset, batch_size=self.config.batch_size, collate_fn=collate_fn, shuffle=True)
+        return loader
+
+    def train_predictor(self, loader):
+        p_losses = []
+        if self.predictor.needs_training() and not self.config.reuse_predictor:
+            for xx, yy in tqdm.tqdm(loader):
+                xff = self.ff(xx)
+                yff = self.ff(yy)
+
+                # relying on basis for radius is ugly ...
+                y_pred = self.predictor.run(xff.regions(self.basis.in_rad))
+                y_true = yff.regions(self.basis.out_rad)
+
+                p_loss = self.predictor.loss(y_pred, y_true)
+                p_losses.append(float(p_loss.detach().cpu()))
+
+                self.predictor.optimizer.zero_grad()
+                p_loss.backward()
+                self.predictor.optimizer.step()
+
+        p_losses = np.mean(p_losses) if len(p_losses) else 0
+
+        if self.predictor.needs_training() and not self.config.reuse_predictor:
+            torch.save(self.predictor, "predictors/" + self.predictor.name() + '.pt')
+
+        return p_losses
+
+    def train(self):
+        loader = self.loader()
 
         for e in range(self.config.epochs):
             # train predictor
-            p_losses = []
-            if self.predictor.needs_training() and not self.config.reuse_predictor:
-                for _ in range(20):
-                    for xx, yy in tqdm.tqdm(loader):
-                        xff = self.ff(xx)
-                        yff = self.ff(yy)
-
-                        # relying on basis for radius is ugly ...
-                        y_pred = self.predictor.run(xff.regions(self.basis.in_rad))
-                        y_true = yff.regions(self.basis.out_rad)
-
-                        p_loss = self.predictor.loss(y_pred, y_true)
-                        p_losses.append(float(p_loss.detach().cpu()))
-
-                        self.predictor.optimizer.zero_grad()
-                        p_loss.backward()
-                        self.predictor.optimizer.step()
-
-            p_losses = np.mean(p_losses) if len(p_losses) else 0
-
-            if self.predictor.needs_training() and not self.config.reuse_predictor:
-                torch.save(self.predictor, "predictors/" + self.predictor.name() + '.pt')
+            p_losses = self.train_predictor(loader)
 
             # train basis
             b_losses = []
@@ -97,3 +105,35 @@ class LocalTrainer:
             print("Discovered Basis \n", self.basis.summary())
             print("Epoch", e, "Predictor loss", p_losses, "Basis loss", b_losses, "Basis reg", b_reg)
 
+    def discover_cosets(self, relates, q):
+        loader = self.loader()
+
+        for e in range(self.config.epochs):
+            # train predictor
+            p_losses = self.train_predictor(loader)
+
+            # train cosets
+            b_losses = []
+            for xx, yy in tqdm.tqdm(loader):
+                xff = self.ff(xx)
+                yff = self.ff(yy)
+
+                b_loss = self.basis.coset_step(xff, self.predictor) 
+                b_losses.append(float(b_loss))
+
+                self.basis.optimizer.zero_grad()
+                b_loss.backward()
+                self.basis.optimizer.step()
+            b_losses = np.mean(b_losses) if len(b_losses) else 0
+
+            print("Epoch", e, "Predictor loss", p_losses, "Basis loss", b_losses, "Basis reg", b_reg)
+   
+        final = []
+        for coset in self.basis.cosets[:q]:
+            for curr in final:
+                if relates(curr, coset):
+                    break
+            else:
+                final.append(coset)
+
+        print("Final coset representatives", final)

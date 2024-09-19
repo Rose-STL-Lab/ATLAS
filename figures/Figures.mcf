@@ -23,7 +23,7 @@
 			mesh: Text:
 				text: "\begin{center} %{text} \end{center}"
 				scale: 0.5
-				stroke: CLEAR
+				stroke: tc
 				fill: tc
 			at: pos
 		element: ret
@@ -324,7 +324,7 @@
 		w: 1.5
 		h: 1.5
 		tag: {}
-		pos: {-2.5, 0, 0}
+		pos: {-2.75, 0, 0}
 	
 	ds_box = Box:
 		text: "\textbf{Dataset}"
@@ -336,10 +336,10 @@
 		pos: {2, 1.2, 0}
 	
 	loss_box = Box:
-		text: "\textbf{Loss} \\ $ \sum| f(g_{i} * x) - g_{i} * f(x) |$"
+		text: "\textbf{Loss} \\ $ \sum| \sigma_{\alpha}(g_{i} * x) - g_{i} * \sigma_{\alpha}(x) |$"
 		color: RED
 		tc: WHITE
-		w: 2
+		w: 2.2
 		h: 1
 		tag: {}
 		pos: {2, 0, 0}
@@ -347,7 +347,7 @@
 	x_arrow = Tex:
 		tex: "\stackrel{\downarrow}{\raisebox{-1.2ex}{\bf x}}"
 		scale: 0.5
-		stroke: CLEAR
+		stroke: BLACK
 		fill: BLACK
 	x_arrow = MovedNextTo:
 		mesh: x_arrow
@@ -356,7 +356,7 @@
 	tree g_arrow = Tex:
 		tex: "\rightarrow{\bf{\{g_i\}_{i = 1}^{K}}}"
 		scale: 0.5
-		stroke: CLEAR
+		stroke: BLACK
 		fill: BLACK
 	g_arrow = MovedNextTo:
 		mesh: g_arrow
@@ -384,13 +384,13 @@
 		align: center
 	matrices = Centered:
 		mesh: matrices
-		at: {-1.2, 0,0 }
+		at: {-1.3, 0,0 }
 	eqn = {}
 	eqn += matrices
 	eqn += Text:
 		text: "$\to$ normalize"
 		scale: 0.5
-		stroke: CLEAR
+		stroke: BLACK
 		fill: BLACK
 	eqn = XStack:
 		mesh_vector: eqn
@@ -605,3 +605,9 @@
 		fill: BLACK
 	p += Set:
 		vars&: {x, fx, gx, fgx, arrows, labels}
+	x = fx = gx = fgx = arrows = labels = {}
+	p += Wait(1)
+	p += Set:
+		vars&: {x, fx, gx, fgx, arrows, labels}
+[slide name: "slide_5"]
+	
