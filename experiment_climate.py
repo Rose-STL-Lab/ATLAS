@@ -19,8 +19,8 @@ import numpy as np
 
 device = get_device()
 
-IN_RAD = 200
-OUT_RAD = 150
+IN_RAD = 350
+OUT_RAD = 200
 ICO_RES = 6
 
 
@@ -31,7 +31,7 @@ class ClimateFeatureField(R2FeatureField):
 
         c = self.data.shape[-1]
         r = self.data.shape[-2]
-        locs = [(r * 0.35, c * 0.5), (r * 0.45, c * 0.5), (r * 0.55, c * 0.5), (r * 0.65, c * 0.5)]
+        locs = [(r * 0.5, c * 0.5)] # , (r * 0.45, c * 0.5), (r * 0.55, c * 0.5), (r * 0.65, c * 0.5)]
 
         self.locs = [(int(r), int(c)) for r, c in locs]
 
@@ -49,7 +49,7 @@ class ClimatePredictor(torch.nn.Module, Predictor):
 
     def run(self, x):
         chart_ret = []
-        for i, net in enumerate([self.network1, self.network2, self.network3, self.network4]):
+        for i, net in enumerate([self.network1]): #, self.network2, self.network3, self.network4]):
             ret = net(x[:, i])
 
             # clip to the out radius in the case that it's smaller than in radius

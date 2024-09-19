@@ -57,6 +57,67 @@
 			stroke: BLACK
 		element: ret
 	
+	let colors = {-10: GRAY, 0.2:YELLOW, 0.5: ORANGE, 0.6:RED}
+	func Chart(tag, pos, mag(u, v), i_hat, j_hat) = identity:	
+		var ret = {}
+		ret += Rect:
+			center: {0, 0, 0}
+			width: 1
+			height: 1
+			tag: tag
+			stroke: BLUE
+			fill: {1, 1, 1, 0.3}
+		/* grid lines */
+		let count = 7
+		for i in 0 :< count
+			let pos = (i + 1) / (count + 1) - 0.5
+			ret += Line:
+				start: {-0.5, pos, 0}
+				end: {0.5, pos, 0}
+				tag: {}
+				stroke: LIGHT_GRAY
+			ret += Line:
+				start: {pos, -0.5, 0}
+				end: {pos, 0.5, 0}
+				tag: {}
+				stroke: LIGHT_GRAY
+		/* main circle */
+		let r = 0.35
+		let circle = ColorGrid:
+			x_min: -0.5
+			x_max: 0.5
+			y_min: -0.5
+			y_max: 0.5
+			x_step: 0.010001
+			y_step: 0.010001
+			mask(pos): norm(pos) < r
+			tag: {}
+			color_at(pos): keyframe_lerp(colors, mag(pos[0], pos[1]))
+			stroke: CLEAR
+		
+		ret += Circle:
+			center: ORIGIN
+			radius: r
+			tag: {}
+			stroke: DARK_GRAY
+			fill: DARK_GRAY
+		ret += Shifted:
+			mesh: circle
+			delta: {0, 0, 0.0036}
+		let k_hat = normalize(cross_product(j_hat, i_hat))
+		ret = PointMapped:
+			mesh: ret
+			point_map(point): identity:
+				let i = vec_mul(point[0], i_hat)
+				let j = vec_mul(point[1], j_hat)
+				let k = vec_mul(point[2], k_hat)
+				element: vec_add(vec_add(i, j), k)
+		ret = Shifted:
+			mesh: ret
+			delta: pos
+		element: ret
+	
+	
 	let uv_base = ColorGrid:
 		x_min: 0
 		x_max: 1
@@ -75,16 +136,15 @@
 		stroke: CLEAR
 	let r1 = 0.75
 	let r2 = 0.35
-	let colors = {-10: GRAY, 0.2:YELLOW, 0.5: ORANGE, 0.6:RED}
-	func torus_map(u_raw, v_raw) = identity:
+	func torus_map(u_raw, v_raw, r1, r2) = identity:
 		let u = u_raw * TAU
 		let v = v_raw * TAU
 		let x = (r1 + r2 * cos(v)) * cos(u)
 		let y = (r1 + r2 * cos(v)) * sin(u)
 		let z = r2 * sin(v)
-		
 		element: {x, z, y}
-	func Torus(mag(u, v), pos) = identity:
+	
+	func Torus(mag(u, v), chart_locs, pos) = identity:
 		var torus = ColorMapped:
 			mesh: uv_base
 			color_map(point): identity:
@@ -92,61 +152,41 @@
 				element: keyframe_lerp(colors, m)
 		torus = PointMapped:
 			mesh: torus
-			point_map(point): torus_map(point[0], point[1])
+			point_map(point): torus_map(point[0], point[1], r1, r2)
 		torus = AddedGloss:
 			mesh: torus
-		torus = Rotated:
-			mesh: torus
+		var ret = {torus}
+		var i = 0
+		for loc in chart_locs
+			i += 1
+			var area = Circle:
+				center: {loc[0], loc[1], 0}
+				radius: 0.03
+				tag: {i}
+				stroke: DARK_GRAY
+			area = Scaled:
+				mesh: area
+				scale: {1, 3, 1}
+			area = PointMapped:
+				mesh: area
+				point_map(point): torus_map(point[0], point[1], r1, r2 + 0.005)
+			ret += area
+			
+			let u = (loc[0]) * TAU
+			let v = loc[1] * TAU
+			
+			let u_scale = 0.5 / 0.35 * 0.03 * 2
+			let v_scale = 3 * u_scale
+			var chart = Chart:
+				tag: {i}
+				pos: torus_map(loc[0] + loc[3], loc[1], r1, r2 * loc[2])
+				mag(u, v): mag(loc[0] + u * u_scale, loc[1] + v * v_scale)
+				i_hat: vec_mul({-sin(u), 0, cos(u)}, 0.5)
+				j_hat: vec_mul({-cos(u) * sin(v), cos(v), -sin(u) * sin(v)}, 0.5)
+			ret += chart
+		ret = Rotated:
+			mesh: ret
 			rotation: {0.9, 0, 0}
-		torus = Centered:
-			mesh: torus
-			at: pos
-		element: torus
-	
-	func Chart(tag, pos, mag(u, v), normal) = identity:	
-		var ret = {}
-		ret += Rect:
-			center: {0, 0, 0}
-			width: 1
-			height: 1
-			tag: tag
-			stroke: BLUE
-			fill: {1, 1, 1, 0.3}
-		/* grid lines */
-		let count = 7
-		for i in 0 :< count
-			let pos = (i + 1) / (count + 1) - 0.5
-			ret += Line:
-				start: {-0.5, pos, 0}
-				end: {0.5, pos, 0}
-				tag: tag
-				stroke: LIGHT_GRAY
-			ret += Line:
-				start: {pos, -0.5, 0}
-				end: {pos, 0.5, 0}
-				tag: tag
-				stroke: LIGHT_GRAY
-		/* main circle */
-		let r = 0.35
-		let circle = ColorGrid:
-			x_min: -0.5
-			x_max: 0.5
-			y_min: -0.5
-			y_max: 0.5
-			x_step: 0.010001
-			y_step: 0.010001
-			mask(pos): norm(pos) < r
-			tag: tag
-			color_at(pos): keyframe_lerp(colors, mag(pos[0], pos[1]))
-			stroke: CLEAR
-		ret += Circle:
-			center: ORIGIN
-			radius: r
-			tag: tag
-			stroke: DARK_GRAY
-			fill: DARK_GRAY
-		ret += circle
-	
 		ret = Shifted:
 			mesh: ret
 			delta: pos
@@ -403,61 +443,85 @@
 		element: ret
 	
 	
+	let locs = {{0.25, 0.15, 2, 0}, {0.05, 0.25, 1.5, 0}, {0.75, 0.23, 3.65, 0.05}}
+	let locs2 = {{0.25, 0.15, 2, 0}, {0.05, 0.25, 1.5, 0}, {0.75, 0.23, 3.6, -0.03}}
 	tree left = Torus:
 		mag(u, v): f(u, v)
-		pos: {-2, 0, 0}
+		chart_locs: locs
+		pos: {-2, -0, 0}
 	tree right = Torus:
 		mag(u, v): fp(u, v)
-		pos: {2, 0, 0}
-	
-	func Tx(tex, at) = identity:
+		chart_locs: locs2
+		pos: {2, -0, 0}
+	func Tx(tex, scale, at) = identity:
 		var ret = Tex:
 			tex: tex
-			scale: 0.75
+			scale: scale
 			stroke: BLACK
 			fill: BLACK
 		ret = Centered:
 			mesh: ret
 			at: at
 		element: ret
-	var label = Tx:
-		tex: "\sigma"
-		at: {0, 0.15, 0}
-	var arrow = Arrow:
-		start: {-0.5,0, 0}
-		end: {0.5,0,0}
-		normal: FORWARD
-		path_arc: -0.125
-		tag: {}
-		stroke: CLEAR
-		fill: BLACK
-	tree la = {arrow, label}
 	
+	var starts = {{-1.5, 1.775, 0}, {-1.65, -0.475, 1}, {-0.77, 0.34, 1}}
+	var ends = {  {1.57, 1.8, 0}, {1.64, -0.5, 1}, {1.93, 0.37, 1}}
+	var arcs = {-0.2, 0.3, -0.15}
+	tree arrows = {}
+	for i in 0 :< len(starts)
+		arrows += Arrow:
+			start: starts[i]
+			end: ends[i]
+			normal: {0, 0, 1}
+			path_arc: arcs[i]
+			tag: {}
+			let g = 0.5
+			stroke: CLEAR
+			fill: {g, g, g, 0.4}
+	
+	tree projs = {}
+	projs += Text:
+		text: "\begin{center} \raisebox{0.9ex}{$\uparrow$} \\ $\varphi_{3}^{-1*}$ \end{center}"
+		scale: 0.45
+		stroke: BLACK
+		fill: BLACK
+	projs += projs[0]
+	projs[0] = Shifted:
+		mesh: projs[0]
+		delta: {-1.95, 1.55, 0}
+	projs[0] = Rotated:
+		mesh: projs[0]
+		rotation: {0.5, 0.3, 0}
+	projs[1] = Shifted:
+		mesh: projs[1]
+		delta: {1.65, 1.55, 0}
+	projs[1] = Rotated:
+		mesh: projs[1]
+		rotation: {0.6, -0.2, 0}
+	
+	tree labels = {} + Tx:
+		tex: "\sigma \mapsto"
+		scale: 2.25
+		at: {0, -1.7, 0}
+	labels += Tx:
+		tex: "\sigma_3"
+		scale: 0.65
+		at: {0.1, 2.05, 0}
+	labels += Tx:
+		tex: "\sigma_2"
+		scale: 0.65
+		at: {-0.1, 0.65, 0}
+	labels += Tx:
+		tex: "\sigma_1"
+		scale: 0.65
+		at: {0.2, -0.95, 0}
 	p += Set:
-		vars&: {left, right, la}
-	left = right = la = {}
+		vars&: {left, right, labels, arrows, projs}
+	
+	left = right = labels = arrows = projs = {}
 	p += Wait(1)
 	p += Set:
-		vars&: {left, right, la}
-[slide name: "slide_4"]
-	/* Atlas, proj, and support function */
-	left = Torus:
-		mag(u, v): f(u, v)
-		pos: {-2, 0, 0}
-	right = Torus:
-		mag(u, v): fp(u, v)
-		pos: {2, 1, 0}
-	
-	
-	
-	
-	/* torus, proj and proj labels, and charts */  
-	func ProjTorus(x) = 0
-	
-	
-	tree charts = {}
-	tree proj_arrows = {}
-	tree proj_labels = {}
+		vars&: {left, right, labels, arrows, projs}
 [slide name: "slide_6"]
 	/* Atlas Equivariance Commutative Diagram */
 	
@@ -465,24 +529,27 @@
 		tag: {}
 		pos: {-1.25, 1.25, 0}
 		mag(u, v): f(u, v)
-		normal: FORWARD
+		i_hat: LEFT
+		j_hat: UP
 	tree fx = Chart:
 		tag: {}
 		pos: {-1.25, -1.25, 0}
 		mag(u, v): fp(u, v)
-		normal: FORWARD
+		i_hat: LEFT
+		j_hat: UP
 	tree gx = Chart:
 		tag: {}
 		pos: {1.25, 1.25, 0}
 		mag(u, v): f(-v, u)
-		normal: FORWARD
+		i_hat: LEFT
+		j_hat: UP
 	tree fgx = Chart:
 		tag: {}
 		pos: {1.25, -1.25, 0}
 		mag(u, v): fp(-v, u)
-		normal: FORWARD
-	
-	tree arrows = {}
+		i_hat: LEFT
+		j_hat: UP
+	arrows = {}
 	arrows += Arrow:
 		start: x
 		end: fx
@@ -507,7 +574,7 @@
 		tag: {}
 		stroke: CLEAR
 		fill: DARK_GRAY
-	tree labels = {}
+	labels = {}
 	labels += Label:
 		mesh: arrows
 		str: "$g$"
