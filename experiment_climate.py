@@ -391,7 +391,13 @@ def ious(cm):
     tc_iou = prune(float((cm[1, 1] / torch.sum(cm[(i == 1) | (j == 1)])).detach().cpu()))
     ar_iou = prune(float((cm[2, 2] / torch.sum(cm[(i == 2) | (j == 2)])).detach().cpu()))
 
-    return bg_iou, tc_iou, ar_iou
+    precision = 0
+    recall = 0
+    for k in range(3):
+        precision += prune(float((cm[k,k] / torch.sum(cm[(j == k)])).detach().cpu()))
+        recall += prune(float((cm[k,k] / torch.sum(cm[(i == k)])).detach().cpu()))
+
+    return bg_iou, tc_iou, ar_iou, precision/3, recall/3
 
 
 def dataset_iou(dataset):
@@ -492,7 +498,7 @@ def train(config, kernel_type):
             optim.step()
         
         print("Epoch", e, "Loss", np.mean(losses), "IOUs")
-        bg_iou, tc_iou, ar_iou = ious(cm)
+        bg_iou, tc_iou, ar_iou, precision, recall = ious(cm)
         iou = torch.tensor([bg_iou, tc_iou, ar_iou]).mean()
         print("bg", bg_iou, "tc", tc_iou, "ar", ar_iou, "mean", iou)
         print("confusion matrix:\n", cm)
@@ -502,32 +508,49 @@ def train(config, kernel_type):
     bg_iou = []
     tc_iou = []
     ar_iou = []
+    pres = []
+    recs = []
     for x, ys in tqdm.tqdm(date_test_dataset.values()):
-        # xx = x.unsqueeze(0).permute(0, 2, 3, 1, 4, 5)
-        # y_pred = model(xx.flatten(0, 2)).unflatten(0, (-1, 5)).swapaxes(1, 2)
         y_pred = model(x.unsqueeze(0))
         _, y_pred_ind = torch.max(y_pred, dim=1)
 
-        cm = torch.zeros((3, 3), device=device)
-        # only take first one
+        bg = 0
+        tc = 0
+        ar = 0
+        pre = 0
+        rec = 0
+
         for y in ys:
+            cm = torch.zeros((3, 3), device=device)
             _, y_true_ind = torch.max(y.unsqueeze(0), dim=1)
 
             for r in range(3):
                 for c in range(3):
                     cm[r, c] += torch.sum((y_true_ind == r) & (y_pred_ind == c))
 
-        bg, tc, ar = ious(cm)
+            bgp, tcp, arp, prp, rep = ious(cm)
+            bg += bgp / len(ys)
+            tc += tcp / len(ys)
+            ar += arp / len(ys)
+            pre += prp / len(ys)
+            rec += rep / len(ys)
+    
         bg_iou.append(bg)
         tc_iou.append(tc)
         ar_iou.append(ar)
+        pres.append(pre)
+        recs.append(rec)
 
     bg_iou = np.mean(bg_iou)
     tc_iou = np.mean(tc_iou)
     ar_iou = np.mean(ar_iou)
-
+    pres = np.mean(pres)
+    recs = np.mean(recs)
     iou = np.mean([bg_iou, tc_iou, ar_iou])
+
+    torch.set_printoptions(sci_mode=False)
     print("test ious: bg", bg_iou, "tc", tc_iou, "ar", ar_iou, "mean", iou)
+    print("precision:", pres, "recall:", recs)
 
 
 if __name__ == '__main__':
