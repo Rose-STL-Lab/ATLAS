@@ -52,10 +52,7 @@ class ClimatePredictor(torch.nn.Module, Predictor):
         for i, net in enumerate([self.network1, self.network2, self.network3, self.network4]):
             ret = net(x[:, i])
 
-            # clip to the out radius in the case that it's smaller than in radius
-            mid_r = x.shape[-2] // 2
-            mid_c = x.shape[-1] // 2
-            ret = ret[:, :, mid_r - OUT_RAD : mid_r + OUT_RAD + 1, mid_c - OUT_RAD : mid_c + OUT_RAD + 1]
+            # clipping to out radius is done by group basis
 
             chart_ret.append(ret)
 

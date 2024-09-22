@@ -62,9 +62,10 @@ class LocalTrainer:
                 xff = self.ff(xx)
                 yff = self.ff(yy)
 
-                # relying on basis for radius is ugly ...
                 y_pred = self.predictor.run(xff.regions(self.basis.in_rad))
-                y_true = yff.regions(self.basis.out_rad)
+                # relying on basis for radius is ugly ...
+                # in rad since clipping is only needed for group basis training
+                y_true = yff.regions(self.basis.in_rad)
 
                 p_loss = self.predictor.loss(y_pred, y_true)
                 p_losses.append(float(p_loss.detach().cpu()))
@@ -151,3 +152,4 @@ class LocalTrainer:
                         final.append(coset)
 
         print("Final coset representatives", final)
+        print("All", self.basis.cosets[inds][:q])

@@ -117,6 +117,11 @@ class GroupBasis(nn.Module):
 
         y_atlas_true = pred.run(g_x_atlas)
 
+        r = y_atlas_true.shape[-2] // 2
+        c = y_atlas_true.shape[-1] // 2
+        y_atlas_true = y_atlas_true[..., r - self.out_rad: r + self.out_rad + 1, c - self.out_rad: c + self.out_rad + 1]
+        g_y_atlas = g_y_atlas[..., r - self.out_rad: r + self.out_rad + 1, c - self.out_rad: c + self.out_rad + 1]
+
         return pred.loss(y_atlas_true, g_y_atlas)
 
     def coset_step(self, x, pred):
@@ -141,6 +146,11 @@ class GroupBasis(nn.Module):
         g_y_atlas = transform_atlas(cosets, out_rep, y_atlas, self.out_interpolation)
 
         y_atlas_true = pred.run(g_x_atlas)
+
+        r = y_atlas_true.shape[-2] // 2
+        c = y_atlas_true.shape[-1] // 2
+        y_atlas_true = y_atlas_true[..., r - self.out_rad: r + self.out_rad + 1, c - self.out_rad: c + self.out_rad + 1]
+        g_y_atlas = g_y_atlas[..., r - self.out_rad: r + self.out_rad + 1, c - self.out_rad: c + self.out_rad + 1]
 
         return y_atlas_true.unflatten(0, (-1, bs)), g_y_atlas.unflatten(0, (-1, bs))
 

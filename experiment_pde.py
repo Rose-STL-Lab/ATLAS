@@ -52,10 +52,8 @@ class SinglePredictor(nn.Module):
 
 
     def forward(self, x):
-        ret = self.model(x)
-        r = ret.shape[-2] // 2
-        c = ret.shape[-1] // 2
-        return ret[..., r - OUT_RAD : r + OUT_RAD + 1, c - OUT_RAD : c + OUT_RAD + 1]
+        # clipped by group basis
+        return self.model(x)
 
 
 class PDEFeatureField(R2FeatureField):
@@ -106,7 +104,6 @@ class PDEPredictor(nn.Module, Predictor):
         return False
 
 
-
 class PDEDataset(torch.utils.data.Dataset):
     def __init__(self, N):
         super().__init__()
@@ -155,9 +152,10 @@ def discover(config, algebra, cosets):
         gdn.train()
     if cosets:
         def relates(a, b):
-            return torch.linalg.matrix_norm(a - b) < 0.1
+            inv = a @ torch.inverse(b)
+            return torch.linalg.matrix_norm(inv - torch.eye(2, device=device)) < 0.1
 
-        gdn.discover_cosets(relates, 24)
+        gdn.discover_cosets(relates, 55)
 
 
 if __name__ == '__main__':
