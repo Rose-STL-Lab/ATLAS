@@ -5,87 +5,160 @@ import pandas as pd
 import numpy as np
 import tqdm
 from ff import R2FeatureField
-from utils import get_device
-from local_symmetry import Predictor
+from utils import get_device, rmse
+from group_basis import GroupBasis
+from local_symmetry import Predictor, LocalTrainer
 from config import Config
+from pyperlin import FractalPerlin2D
+
 
 device = get_device()
 
 IN_RAD = 14
-OUT_RAD = 14
-CLASS_WEIGHTS = torch.tensor([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0.1], device=device)
-NUM_CLASS = len(CLASS_WEIGHTS)
+OUT_RAD = 6
 
 
-class PDEFeatureField(R2FeatureField):
-    def __init__(self, data):
-        super().__init__(data)
+# solely predict d/dt
+def pde(x_in):
+    x = torch.nn.functional.pad(x_in, (1, 1, 1, 1,), mode='replicate') 
 
-        w = self.data.shape[-1]
-        h = self.data.shape[-2]
-        locs = [(h / 6, w * 0.5), (h * 0.5, w * 0.5), (h * 5 / 6, w * 0.5)]
+    ddx = x[..., 2:, 1:-1] - x[..., :-2, 1:-1]
+    ddy = x[..., 1:-1, 2:] - x[..., 1:-1, :-2]
 
-        self.locs = [(int(r), int(c)) for r, c in locs]
-    
-    def regions(self, radius):
-        return 0
+    # K4 group symmetry
+    ddt = -ddx.abs() + 3 * ddy.abs()
+    return ddt
 
 
 class SinglePredictor(nn.Module):
     def __init__(self):
         super().__init__()
 
-        self.down = nn.Sequential(
-            nn.Conv2d(1, 32, kernel_size=3, stride=2, padding=1),
+        self.model = nn.Sequential(
+            nn.Conv2d(1, 16, kernel_size=3, padding='same'),
             nn.LeakyReLU(),
-            nn.BatchNorm2d(32),
+            nn.BatchNorm2d(16),
 
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(16, 16, kernel_size=3, padding='same'),
             nn.LeakyReLU(),
-            nn.BatchNorm2d(64),
+            nn.BatchNorm2d(16),
 
-            nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(16, 16, kernel_size=3, padding='same'),
             nn.LeakyReLU(),
-            nn.BatchNorm2d(64),
+            nn.BatchNorm2d(16),
 
-            nn.Conv2d(64, 64, kernel_size=3),
-            nn.LeakyReLU(),
-            nn.BatchNorm2d(64),
+            nn.Conv2d(16, 1, kernel_size=3, padding='same'),
         ).to(device)
 
-        self.up = nn.Sequential(
-            nn.ConvTranspose2d(64, 64, kernel_size=3),
-            nn.LeakyReLU(),
-            nn.BatchNorm2d(64),
 
-            nn.ConvTranspose2d(64, 64, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.LeakyReLU(),
-            nn.BatchNorm2d(64),
+    def forward(self, x):
+        ret = self.model(x)
+        r = ret.shape[-2] // 2
+        c = ret.shape[-1] // 2
+        return ret[..., r - OUT_RAD : r + OUT_RAD + 1, c - OUT_RAD : c + OUT_RAD + 1]
 
-            nn.ConvTranspose2d(64, 64, kernel_size=3, stride=2, padding=1),
-            nn.LeakyReLU(),
-            nn.BatchNorm2d(64),
 
-            nn.ConvTranspose2d(64, NUM_CLASS, kernel_size=3, stride=2, padding=1),
-            nn.LeakyReLU(),
-            nn.BatchNorm2d(NUM_CLASS),
+class PDEFeatureField(R2FeatureField):
+    def __init__(self, data):
+        super().__init__(data) 
 
-# rotationally and scaling symmetric
-def pde():
-    pass
+        c = self.data.shape[-1]
+        r = self.data.shape[-2]
+        locs = [(r * 0.3, c * 0.3), (r * 0.7, c * 0.7), (r * 0.3, c * 0.7), (r * 0.7, c * 0.3)]
 
-class PDEFeatureField():
-    pass
+        self.locs = [(int(r), int(c)) for r, c in locs]
 
-class PDESinglePredictor():
-    pass
 
-class PDEDataset():
-    pass
+class PDEPredictor(nn.Module, Predictor):
+    def __init__(self):
+        super().__init__()
+        
+        self.p1 = SinglePredictor()
+        self.p2 = SinglePredictor()
+        self.p3 = SinglePredictor()
+        self.p4 = SinglePredictor()
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)   
 
-def discover(c, algebra, cosets):
-    g = GroupBasis()
-    pass
+    def run(self, x):
+        chart_ret = []
+        for i, net in enumerate([self.p1, self.p2, self.p3, self.p4]):
+            ret = net(x[:, i])
+            chart_ret.append(ret)
+
+        return torch.stack(chart_ret, dim=1)
+
+    def forward(self, x):
+        return self.run(x)
+
+    def loss(self, y_pred, y_true):
+        return (y_pred - y_true).abs().mean()
+
+    def batched_loss(self, y_pred, y_true):
+        return (y_pred - y_true).flatten(1).abs().mean(dim=1)
+
+    def name(self):
+        return "pde" 
+
+    def needs_training(self):
+        return True
+
+    def returns_logits(self):
+        return False
+
+
+
+class PDEDataset(torch.utils.data.Dataset):
+    def __init__(self, N):
+        super().__init__()
+
+        shape = (N, 64, 64)
+        resolutions = [(2 ** i, 2 ** i) for i in range(1, 4)]
+        factors = [1, 0.5, 0.25]
+        fp = FractalPerlin2D(shape, resolutions, factors)
+
+        self.X = fp().to(device).unsqueeze(1).detach()
+        self.Y = pde(self.X)
+
+    def __len__(self):
+        return len(self.X)
+
+    def __getitem__(self, idx):
+        return self.X[idx], self.Y[idx]
+
+
+def discover(config, algebra, cosets):
+    targets = []
+    if algebra:
+        targets.append("algebra")
+    if cosets:
+        targets.append("cosets")
+
+    print("Task: discovering", targets)
+
+    if config.reuse_predictor:
+        predictor = torch.load("predictors/pde.pt")
+    else:
+        predictor = PDEPredictor()
+
+    basis = GroupBasis(
+        1, 2, 1, 1, config.standard_basis, 
+        in_rad=IN_RAD, out_rad=OUT_RAD, 
+        identity_in_rep=True,
+        identity_out_rep=True, 
+        r3=0.1,
+    )
+
+    dataset = PDEDataset(config.N)
+
+    gdn = LocalTrainer(PDEFeatureField, predictor, basis, dataset, config)   
+    if algebra:
+        gdn.train()
+    if cosets:
+        def relates(a, b):
+            return torch.linalg.matrix_norm(a - b) < 0.1
+
+        gdn.discover_cosets(relates, 24)
+
 
 if __name__ == '__main__':
     c = Config()

@@ -370,7 +370,7 @@ def discover(config):
         lr=5e-4, in_rad=IN_RAD, out_rad=OUT_RAD, 
         identity_in_rep=True,
         identity_out_rep=True, out_interpolation='nearest',
-        r3=5.0  # we use a higher r3 factor mainly due to small scale of dataset
+        r3=5.0
     )
 
     dataset = ClimateTorchDataset(path.join(train_path, 'train'), config)
@@ -420,7 +420,6 @@ def dataset_iou(dataset):
                         cm[r, c] += torch.sum((x == r) & (y == c))
                 count += x.numel()
 
-        # avoid nans
         bg, tc, ar = ious(cm)
 
         bg_iou.append(bg)
@@ -479,8 +478,6 @@ def train(config, kernel_type):
 
         cm = torch.zeros((3, 3), device=device)
         for xx, y_true, timestamps in tqdm.tqdm(train_loader):
-            # xx = xx.permute(0, 2, 3, 1, 4, 5)
-            # y_pred = model(xx.flatten(0, 2)).unflatten(0, (-1, 5)).swapaxes(1, 2)
             y_pred = model(xx)
 
             _, y_pred_ind = torch.max(y_pred, dim=1)

@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import einops
 
 from utils import get_device, transform_atlas
 device = get_device()
@@ -15,7 +16,7 @@ def normalize(x):
 
 class GroupBasis(nn.Module):
     def __init__(
-            self, in_dim, man_dim, out_dim, num_basis, standard_basis, num_cosets=32, 
+            self, in_dim, man_dim, out_dim, num_basis, standard_basis, num_cosets=64, 
             in_rad=10, out_rad=5, lr=5e-4, r1=0.05, r2=1, r3=0.35,
             identity_in_rep=False, identity_out_rep=False, in_interpolation='bilinear', out_interpolation='bilinear', dtype=torch.float32,
     ):
@@ -49,8 +50,9 @@ class GroupBasis(nn.Module):
         for tensor in [self.in_basis, self.lie_basis, self.out_basis]:
             nn.init.normal_(tensor, 0, 0.02)
 
-        self.cosets = nn.Parameter(torch.empty((num_cosets, man_dim, man_dim), dtype=dtype).to(device))
-        nn.init.normal_(self.cosets, 0, 0.02)
+        cosets = torch.empty((num_cosets, man_dim, man_dim), dtype=dtype).to(device)
+        nn.init.normal_(cosets, 0, 1)
+        self.cosets = nn.Parameter(cosets)
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
     
@@ -123,13 +125,13 @@ class GroupBasis(nn.Module):
 
         bs = x.batch_size()
 
-        coeffs = self.sample_coefficients((bs, x.num_charts())) 
+        # technically each chart is transformed the same way, 
+        # but we ensure independence through the separate predictors elsewhere so it's fine
+        cosets = einops.repeat(self.cosets, 'c ... -> (c bs) ...', bs=bs * x.num_charts())
+        in_rep = torch.eye(self.in_dim, device=device).unsqueeze(0).unsqueeze(0).repeat(bs * len(self.cosets), x.num_charts(), 1, 1)
+        out_rep = torch.eye(self.out_dim, device=device).unsqueeze(0).unsqueeze(0).repeat(bs * len(self.cosets), x.num_charts(), 1, 1)
 
-        cosets = self.cosets.tile(bs, 1, 1)
-        in_rep = torch.eye(self.in_dim, device=device).unsqueeze(0).unsqueeze(0).repeat(bs * self.num_cosets, x.num_charts(), 1, 1)
-        out_rep = torch.eye(self.out_dim, device=device).unsqueeze(0).unsqueeze(0).repeat(bs * self.num_cosets, x.num_charts(), 1, 1)
-
-        x_atlas = x.regions(self.in_rad)
+        x_atlas = einops.repeat(x.regions(self.in_rad), 'bs ... -> (c bs) ...', c=len(self.cosets))
         g_x_atlas = transform_atlas(cosets, in_rep, x_atlas, self.in_interpolation)
 
         y_atlas = pred.run(x_atlas)
@@ -140,7 +142,7 @@ class GroupBasis(nn.Module):
 
         y_atlas_true = pred.run(g_x_atlas)
 
-        return pred.loss(y_atlas_true, g_y_atlas)
+        return y_atlas_true.unflatten(0, (-1, bs)), g_y_atlas.unflatten(0, (-1, bs))
 
     # called by LocalTrainer during training
     def regularization(self, _epoch_num):

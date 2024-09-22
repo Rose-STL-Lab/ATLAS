@@ -25,6 +25,11 @@ class Predictor(ABC):
     def loss(self, y_pred, y_true):
         return rmse(y_pred, y_true)
 
+    # implement if coset discovery is needed
+    # same as `loss`, but does not collapse on first dimension
+    def batched_loss(self, y_pred, y_true):
+        raise NotImplemented()
+
     def returns_logits(self):
         return False
 
@@ -34,16 +39,16 @@ class Predictor(ABC):
 
 
 class LocalTrainer:
-    def __init__(self, ff, predictor, basis, dataset, config: Config, debug=True):
+    def __init__(self, ff, predictor, basis, dataset, config: Config):
         self.ff = ff
         self.predictor = predictor
         self.basis = basis
         self.dataset = dataset
         self.config = config
        
-        if debug:
+        if config.debug:
             torch.autograd.set_detect_anomaly(True)
-            torch.set_printoptions(precision=9, sci_mode=False)
+        torch.set_printoptions(precision=9, sci_mode=False)
 
     def loader(self):
         collate_fn = self.dataset.collate if hasattr(self.dataset, 'collate') else None
@@ -113,12 +118,15 @@ class LocalTrainer:
             p_losses = self.train_predictor(loader)
 
             # train cosets
+            full_losses = []
             b_losses = []
             for xx, yy in tqdm.tqdm(loader):
                 xff = self.ff(xx)
                 yff = self.ff(yy)
 
-                b_loss = self.basis.coset_step(xff, self.predictor) 
+                b_loss_full = self.predictor.batched_loss(*self.basis.coset_step(xff, self.predictor))
+                full_losses.append(b_loss_full.cpu().detach().numpy())
+                b_loss = b_loss_full.mean()
                 b_losses.append(float(b_loss))
 
                 self.basis.optimizer.zero_grad()
@@ -126,14 +134,20 @@ class LocalTrainer:
                 self.basis.optimizer.step()
             b_losses = np.mean(b_losses) if len(b_losses) else 0
 
-            print("Epoch", e, "Predictor loss", p_losses, "Basis loss", b_losses, "Basis reg", b_reg)
+            full_losses_avg = np.mean(full_losses, axis=0)
+            best = np.argmin(full_losses_avg)
+
+            print("Epoch", e, "Predictor loss", p_losses, "Best loss", full_losses_avg[best], "Best", self.basis.cosets[best].cpu().detach())
    
-        final = []
-        for coset in self.basis.cosets[:q]:
-            for curr in final:
-                if relates(curr, coset):
-                    break
-            else:
-                final.append(coset)
+            if e == self.config.epochs - 1:
+                inds = np.argsort(full_losses_avg)
+
+                final = []
+                for coset in self.basis.cosets[inds][:q]:
+                    for curr in final:
+                        if relates(curr, coset):
+                            break
+                    else:
+                        final.append(coset)
 
         print("Final coset representatives", final)

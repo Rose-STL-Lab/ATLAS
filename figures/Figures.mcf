@@ -610,4 +610,99 @@
 	p += Set:
 		vars&: {x, fx, gx, fgx, arrows, labels}
 [slide name: "slide_5"]
+	func FeatureField(pos, col) = identity:
 	
+		var ret = {}
+		func color(x) = identity:
+			element: {0.5, (1+x[2])/2, (1+x[1])/2, 1}
+		func map(u, v) = identity:
+			let x = sin(v) * cos(u)
+			let y = sin(v) * sin(u)
+			let z = cos(v)
+			element: {x, z, y}
+		var uv = ColorGrid:
+			x_min: 0
+			x_max: 1
+			y_min: 0
+			y_max: 1
+			x_step: 0.011
+			y_step: 0.011
+			tag: {}
+			color_at(pos):  color(map(pos[0], pos[1]))
+			stroke: CLEAR
+		ret += PointMapped:
+			mesh: uv
+			point_map(point): identity:
+				let u = point[0] * TAU
+				let v = point[1] * PI
+				element: map(u, v)
+		ret[0] = PointMapped:
+			mesh: ret[0]
+			point_map(point): identity:
+				
+				element: point
+		ret[0] = AddedGloss:
+			mesh: ret[0]
+		ret[0] = Shifted:
+			mesh: ret[0]
+			delta: pos
+		element: ret
+	
+	let COLORS = {0.2:YELLOW, 1: RED}
+	func VF(pos, mag, rot, col_boost) = identity:
+		func f(x, y, z) = cross_product({x,y,z}, {0,0,1}) 
+		var ret = {}
+		let n = 8
+		let m = 13
+		for i in 0 :< n
+			for j in 0:< m
+				let u = (i+0.8) / n * TAU
+				let v = (j+0.8) / m * PI
+				let x = sin(v) * cos(u)
+				let y = cos(v)
+				let z = sin(v) * sin(u)
+				if norm(vec_sub({x,y,z}, {0,1,0})) < mag || norm(vec_sub({x,y,z}, {0,-1,0})) < mag			
+					ret += Vector:
+						let raw = f(x,z,y))
+						let n = max(0.4, norm(raw))
+						let scaled = vec_mul(0.3 / n, raw)
+						tail: vec_add({x,z,y}, pos)
+						delta: scaled
+						tag: {}
+						stroke: CLEAR
+						fill: keyframe_lerp(COLORS, norm(raw) + 0.1 * (2 - mag) + col_boost)
+		let com = mesh_center(ret)
+		ret = Rotated:
+			mesh: ret
+			rotation: rot
+		element: ret
+		
+	tree lsphere = FeatureField:
+		pos: {-1.5, 0, 0}
+		col: GRAY
+	lsphere += VF:
+		pos: lsphere.pos
+		mag: 2
+		rot: {-0.4, 0, 0}
+		col_boost: 0
+	tree rsphere = FeatureField:
+		pos: {1.5, 0, 0}
+		col: BLUE
+	var q = rsphere.pos
+	rsphere += VF:
+		pos: q
+		mag: 0.6
+		rot: {0,-0.1,0}
+		col_boost: 0
+	rsphere += VF:
+		pos: q
+		mag: 0.3
+		rot: {-0.5, -1, 0}
+		col_boost: 0
+	rsphere += VF:
+		pos: q
+		mag: 0.3
+		rot: {0.7,-0.5,0}
+		col_boost: 0.5
+	p += Set:
+		vars&: {lsphere, rsphere}
