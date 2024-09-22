@@ -62,7 +62,12 @@ class PDEFeatureField(R2FeatureField):
 
         c = self.data.shape[-1]
         r = self.data.shape[-2]
-        locs = [(r * 0.3, c * 0.3), (r * 0.7, c * 0.7), (r * 0.3, c * 0.7), (r * 0.7, c * 0.3)]
+        
+        spots = [0.25, 0.42, 0.58, 0.75]
+        locs = []
+        for i in spots:
+            for j in spots:
+                locs.append((r * i, c * j))
 
         self.locs = [(int(r), int(c)) for r, c in locs]
 
@@ -71,15 +76,12 @@ class PDEPredictor(nn.Module, Predictor):
     def __init__(self):
         super().__init__()
         
-        self.p1 = SinglePredictor()
-        self.p2 = SinglePredictor()
-        self.p3 = SinglePredictor()
-        self.p4 = SinglePredictor()
+        self.predictors = torch.nn.ModuleList([SinglePredictor() for _ in range(16)])
         self.optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)   
 
     def run(self, x):
         chart_ret = []
-        for i, net in enumerate([self.p1, self.p2, self.p3, self.p4]):
+        for i, net in enumerate(self.predictors):
             ret = net(x[:, i])
             chart_ret.append(ret)
 
@@ -140,8 +142,11 @@ def discover(config, algebra, cosets):
     basis = GroupBasis(
         1, 2, 1, 1, config.standard_basis, 
         in_rad=IN_RAD, out_rad=OUT_RAD, 
+        num_cosets=32,
         identity_in_rep=True,
         identity_out_rep=True, 
+        # a small value is needed since the pde values themselves are so small
+        # that even incorrect symmetries generate small loss values
         r3=0.1,
     )
 
@@ -155,7 +160,7 @@ def discover(config, algebra, cosets):
             inv = a @ torch.inverse(b)
             return torch.linalg.matrix_norm(inv - torch.eye(2, device=device)) < 0.1
 
-        gdn.discover_cosets(relates, 55)
+        gdn.discover_cosets(relates, 28)
 
 
 if __name__ == '__main__':
