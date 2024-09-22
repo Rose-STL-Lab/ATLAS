@@ -6,7 +6,7 @@
 
 After (optionally) setting up a virtual environment, run:
 ```
-    pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 
 ## Running Experiments
@@ -40,13 +40,13 @@ Dataset should be downloaded automatically upon first run.
 
 Discover Lie algebra
 ```
-python3 experiment_mnist.py --task discover --epochs=20
+python3 experiment_mnist.py --task discover --epochs 20
 ```
 expected results: generator of so(2).
 
 Use LieGAN to attempt to discover global symmetry
 ```
-python3 experiment_mnist.py --task liegan_discover --epochs=20
+python3 experiment_mnist.py --task liegan_discover --epochs 20
 ```
 expected results: failure to converge to anything non-trivial.
 
@@ -68,7 +68,7 @@ Download dataset from [here](https://portal.nersc.gov/project/ClimateNet/climate
 
 Discover Lie Algebra (optionally use `--standard_basis` flag)
 ```
-python3 experiment_climate.py --task discover --epochs=30
+python3 experiment_climate.py --task discover --epochs 30
 ```
 expected results: 4 dimensional Lie algebra with no major bias in any direction
 

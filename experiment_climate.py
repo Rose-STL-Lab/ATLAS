@@ -19,8 +19,8 @@ import numpy as np
 
 device = get_device()
 
-IN_RAD = 350
-OUT_RAD = 200
+IN_RAD = 200
+OUT_RAD = 150
 ICO_RES = 6
 
 
