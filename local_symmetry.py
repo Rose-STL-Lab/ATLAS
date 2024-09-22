@@ -152,4 +152,3 @@ class LocalTrainer:
                         final.append(coset)
 
         print("Final coset representatives", final)
-        print("All", self.basis.cosets[inds][:q])
