@@ -40,15 +40,15 @@ Dataset should be downloaded automatically upon first run.
 
 Discover Lie algebra
 ```
-python3 experiment_mnist.py --task discover --epochs 20
+python3 experiment_mnist.py --task discover --epochs 10
 ```
 expected results: generator of so(2).
 
 Use LieGAN to attempt to discover global symmetry
 ```
-python3 experiment_mnist.py --task liegan_discover --epochs 20
+python3 experiment_mnist.py --task liegan_discover --epochs 10
 ```
-expected results: failure to converge to anything non-trivial.
+expected results: failure to converge to anything non-trivial. We do note that occasionally LieGAN will report a non-trivial generator. However, even in such cases the generator loss is extremely high which suggests that the GAN converges on this result to optimize the regularization rather than to fool the discriminator
 
 Run baseline CNN with no equivariance
 ```

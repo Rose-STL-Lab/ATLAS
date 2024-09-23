@@ -301,7 +301,11 @@ def lie_gan_discover(config):
     dataset = MNISTDataset(config.N, rotate = 60)
     loader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
 
-    train_lie_gan(generator, discriminator, loader, config.epochs, 2e-4, 1e-3, 'cosine', 1e-2, 2, 0.0, 1.0, device, print_every=1)
+    # the discriminator has a much easier job so its lr is significantly lower
+    # we do note that even with the given hyperparameters, the GAN is able to learn symmetry
+    # when only one digit is present (in which case, there is an actual rotational symmetry)
+    # whereas when there's all three, it's typically unable to converge. 
+    train_lie_gan(generator, discriminator, loader, config.epochs, 5e-5, 5e-4, 'Li_norm', 1e-2, 2, 0.0, 1.0, device, print_every=1)
 
 
 def train(G, config):
