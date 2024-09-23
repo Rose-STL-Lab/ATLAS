@@ -89,7 +89,7 @@ expected results: roughly 0.48 mean iou (essentialy comparable performance to ba
 
 Discover cosets
 ```
-python3 experiment_pde.py --task discover_cosets --epochs 10
+python3 experiment_pde.py --task discover_cosets --epochs 30
 ```
 
 expected results: 4 cosets: identity, reflection across x, reflection across y, reflection across origin.

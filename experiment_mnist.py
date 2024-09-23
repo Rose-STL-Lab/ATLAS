@@ -291,7 +291,7 @@ def lie_gan_discover(config):
     dataset = MNISTDataset(config.N, rotate = 60)
     loader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
 
-    train_lie_gan(generator, discriminator, loader, config.epochs, 1e-4, 1e-3, 'Li_norm', 1e-2, 2, 0.0, 1.0, device, print_every=1)
+    train_lie_gan(generator, discriminator, loader, config.epochs, 2e-4, 1e-3, 'cosine', 1e-2, 2, 0.0, 1.0, device, print_every=1)
 
 
 def train(G, config):
