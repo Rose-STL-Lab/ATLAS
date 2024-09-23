@@ -87,9 +87,9 @@ expected results: roughly 0.48 mean iou (essentialy comparable performance to ba
 
 ### PDE
 
-Discover Lie algebra and cosets
+Discover cosets
 ```
-python3 experiment_pde.py --task discover --epochs 10
+python3 experiment_pde.py --task discover_cosets --epochs 10
 ```
 
-expected results: trivial Lie algebra and 4 cosets: identity, reflection across x, reflection across y, reflection across origin.
+expected results: 4 cosets: identity, reflection across x, reflection across y, reflection across origin.

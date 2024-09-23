@@ -145,9 +145,12 @@ def discover(config, algebra, cosets):
         num_cosets=32,
         identity_in_rep=True,
         identity_out_rep=True, 
-        # a small value is needed since the pde values themselves are so small
+        # a really small value is needed since the pde values themselves are so small
         # that even incorrect symmetries generate small loss values
-        r3=0.1,
+        # in general, when there's no symmetry at all the model
+        # will go in the direction that's closest to symmetry (even if not true invariance)
+        # but this can in many times be undesirable
+        r3=0.01,
     )
 
     dataset = PDEDataset(config.N)
