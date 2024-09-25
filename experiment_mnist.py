@@ -226,7 +226,6 @@ def discover(config):
     gdn.train()
 
 
-debug = 0
 def lie_gan_discover(config):
     """
         In general, since the y labels are at fixed positions on the sphere, we do not expect 
@@ -280,16 +279,6 @@ def lie_gan_discover(config):
 
         # sampled 
         ret = torch.nn.functional.grid_sample(x_in, theta_phi_inv, mode='bilinear', align_corners=False) 
-
-        global debug
-        debug += 1
-        if debug == -1:
-            import matplotlib.pyplot as plt
-            # , y_ind = torch.max(ret[0], 
-            plt.imshow(yind.swapaxes(0, 2).cpu().detach())
-            plt.show()
-            plt.imshow(x_in[0].swapaxes(0, 2).cpu().detach())
-            plt.show()
         return ret
 
     generator = LieGenerator(1, transform, so3_basis).to(device)
