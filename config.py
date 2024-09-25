@@ -1,4 +1,7 @@
 import argparse
+import torch
+import numpy
+import random
 from utils import get_device
 
 
@@ -13,8 +16,14 @@ class Config:
                             help='for randomly generated datasets, the number of elements to generate')
 
         parser.add_argument('--reuse_predictor', default=False, action='store_true')
+        parser.add_argument('--fixed_seed', default=False, action='store_true')
         parser.add_argument('--task', type=str)
         args = parser.parse_args()
+
+        if args.fixed_seed:
+            torch.manual_seed(0)
+            numpy.random.seed(0)
+            random.seed(0)
 
         self.debug = args.debug
         self.standard_basis = args.standard_basis
