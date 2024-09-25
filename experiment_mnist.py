@@ -279,10 +279,7 @@ def lie_gan_discover(config):
         theta_phi_inv = torch.stack((phi_inv, theta_inv), dim=-1)
 
         # sampled 
-        if is_y:
-            ret = torch.nn.functional.grid_sample(x_in, theta_phi_inv, mode='nearest', align_corners=False) 
-        else:
-            ret = torch.nn.functional.grid_sample(x_in, theta_phi_inv, mode='bilinear', align_corners=False) 
+        ret = torch.nn.functional.grid_sample(x_in, theta_phi_inv, mode='bilinear', align_corners=False) 
 
         global debug
         debug += 1
@@ -305,7 +302,7 @@ def lie_gan_discover(config):
     # we do note that even with the given hyperparameters, the GAN is able to learn symmetry
     # when only one digit is present (in which case, there is an actual rotational symmetry)
     # whereas when there's all three, it's typically unable to converge. 
-    train_lie_gan(generator, discriminator, loader, config.epochs, 5e-5, 5e-4, 'Li_norm', 1e-2, 2, 0.0, 1.0, device, print_every=1)
+    train_lie_gan(generator, discriminator, loader, config.epochs, 5e-5, 5e-4, 'Li_norm', 5e-3, 2, 0.0, 1.0, device, print_every=1)
 
 
 def train(G, config):
