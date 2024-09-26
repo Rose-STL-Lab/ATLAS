@@ -339,7 +339,6 @@ class GaugeEquivariantCNN(nn.Module):
         u2 = self.u2(d1, u3)
         u1 = self.u1(None, u2)
 
-        # collapse all orientations
         return torch.sum(u1, dim=-4)
 
 

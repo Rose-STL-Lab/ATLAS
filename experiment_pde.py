@@ -1,7 +1,6 @@
 import sys
 import torch
 from torch import nn
-import pandas as pd
 import numpy as np
 import tqdm
 from ff import R2FeatureField
@@ -17,18 +16,28 @@ device = get_device()
 IN_RAD = 14
 OUT_RAD = 6
 
-
 # solely predict d/dt
-def pde(x_in):
-    x = torch.nn.functional.pad(x_in, (1, 1, 1, 1,), mode='replicate') 
-
-    ddx = x[..., 2:, 1:-1] - x[..., :-2, 1:-1]
-    ddy = x[..., 1:-1, 2:] - x[..., 1:-1, :-2]
+def abs_pde(x_in, dx=0.1):
+    ddx = (x_in[..., 2:, 1:-1] - x_in[..., :-2, 1:-1]) / (2 * dx)
+    ddy = (x_in[..., 1:-1, 2:] - x_in[..., 1:-1, :-2]) / (2 * dx)
 
     # K4 group symmetry
-    ddt = -ddx.abs() + 3 * ddy.abs()
-    return ddt
+    ddt = -ddx.abs() + ddy.abs()
+    
+    # boundary condition
+    return torch.nn.functional.pad(ddt, (1, 1, 1, 1))
 
+def heat_pde(x_in, alpha=1, dx=0.1):
+    ddx = (x_in[..., 2:, 1:-1] - x_in[..., :-2, 1:-1]) / (2 * dx)
+    ddy = (x_in[..., 1:-1, 2:] - x_in[..., 1:-1, :-2]) / (2 * dx)
+
+    dddx = (ddx[..., 2:, 1:-1] - ddx[..., :-2, 1:-1]) / (2 * dx)
+    dddy = (ddy[..., 1:-1, 2:] - ddy[..., 1:-1, :-2]) / (2 * dx)
+
+    ddt = (dddx + dddy) * alpha
+    
+    # boundary condition
+    return torch.nn.functional.pad(ddt, (2, 2, 2, 2), mode='replicate')
 
 class SinglePredictor(nn.Module):
     def __init__(self):
@@ -52,7 +61,6 @@ class SinglePredictor(nn.Module):
 
 
     def forward(self, x):
-        # clipped by group basis
         return self.model(x)
 
 
@@ -107,16 +115,25 @@ class PDEPredictor(nn.Module, Predictor):
 
 
 class PDEDataset(torch.utils.data.Dataset):
-    def __init__(self, N):
+    def __init__(self, dataset, N):
         super().__init__()
 
-        shape = (N, 64, 64)
+        shape = (N, 128, 128)
         resolutions = [(2 ** i, 2 ** i) for i in range(1, 4)]
         factors = [1, 0.5, 0.25]
         fp = FractalPerlin2D(shape, resolutions, factors)
 
+
         self.X = fp().to(device).unsqueeze(1).detach()
-        self.Y = pde(self.X)
+        import matplotlib.pyplot as plt
+        plt.imshow(self.X[0].swapaxes(0,2))
+        plt.show()
+        if dataset == 'abs':
+            self.Y = abs_pde(self.X)
+        elif dataset == 'heat' :
+            self.Y = heat_pde(self.X)
+        else:
+            raise ValueError("Unknown dataset")
 
     def __len__(self):
         return len(self.X)
@@ -150,10 +167,10 @@ def discover(config, algebra, cosets):
         # in general, when there's no symmetry at all the model
         # will go in the direction that's closest to symmetry (even if not true invariance)
         # but this can in many times be undesirable
-        r3=0.01,
+        r3=0.1,
     )
 
-    dataset = PDEDataset(config.N)
+    dataset = PDEDataset(config.pde, config.N)
 
     gdn = LocalTrainer(PDEFeatureField, predictor, basis, dataset, config)   
     if algebra:
