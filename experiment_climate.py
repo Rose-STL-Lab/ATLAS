@@ -166,7 +166,7 @@ class PadIco(torch.nn.Module):
 class StrideConv(nn.Module):
     def __init__(self, kernel_type, r, Cin, Cout, Rin, bias=True, smooth_vertices=False, stride=1):
         super().__init__()
-        assert Rin in [1, 6]
+        assert Rin in [1]
         self.r = r
         self.Cin = Cin
         self.Cout = Cout
