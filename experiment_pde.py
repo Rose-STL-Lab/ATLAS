@@ -14,30 +14,23 @@ from pyperlin import FractalPerlin2D
 device = get_device()
 
 IN_RAD = 14
-OUT_RAD = 6
+OUT_RAD = 7
 
-# solely predict d/dt
-def abs_pde(x_in, dx=0.1):
-    ddx = (x_in[..., 2:, 1:-1] - x_in[..., :-2, 1:-1]) / (2 * dx)
-    ddy = (x_in[..., 1:-1, 2:] - x_in[..., 1:-1, :-2]) / (2 * dx)
+def heat_pde(x_in, mask, alpha=1, dx=0.1, dt=1, t_steps=1):
+    for _ in range(t_steps):
+        x = torch.nn.functional.pad(x_in, (2, 2, 2, 2), 'replicate')
 
-    # K4 group symmetry
-    ddt = -ddx.abs() + ddy.abs()
-    
-    # boundary condition
-    return torch.nn.functional.pad(ddt, (1, 1, 1, 1))
+        ddx = (x[..., 2:, 1:-1] - x[..., :-2, 1:-1]) / (2 * dx)
+        ddy = (x[..., 1:-1, 2:] - x[..., 1:-1, :-2]) / (2 * dx)
 
-def heat_pde(x_in, alpha=1, dx=0.1):
-    ddx = (x_in[..., 2:, 1:-1] - x_in[..., :-2, 1:-1]) / (2 * dx)
-    ddy = (x_in[..., 1:-1, 2:] - x_in[..., 1:-1, :-2]) / (2 * dx)
+        dddx = (ddx[..., 2:, 1:-1] - ddx[..., :-2, 1:-1]) / (2 * dx)
+        dddy = (ddy[..., 1:-1, 2:] - ddy[..., 1:-1, :-2]) / (2 * dx)
 
-    dddx = (ddx[..., 2:, 1:-1] - ddx[..., :-2, 1:-1]) / (2 * dx)
-    dddy = (ddy[..., 1:-1, 2:] - ddy[..., 1:-1, :-2]) / (2 * dx)
+        ddt = (dddx + dddy) * alpha
+        
+        x_in = x_in + dt * ddt
 
-    ddt = (dddx + dddy) * alpha
-    
-    # boundary condition
-    return torch.nn.functional.pad(ddt, (2, 2, 2, 2), mode='replicate')
+    return x_in
 
 class SinglePredictor(nn.Module):
     def __init__(self):
@@ -105,7 +98,7 @@ class PDEPredictor(nn.Module, Predictor):
         return (y_pred - y_true).flatten(1).abs().mean(dim=1)
 
     def name(self):
-        return "pde" 
+        return "pde"
 
     def needs_training(self):
         return True
@@ -115,7 +108,7 @@ class PDEPredictor(nn.Module, Predictor):
 
 
 class PDEDataset(torch.utils.data.Dataset):
-    def __init__(self, dataset, N):
+    def __init__(self, N):
         super().__init__()
 
         shape = (N, 128, 128)
@@ -123,17 +116,10 @@ class PDEDataset(torch.utils.data.Dataset):
         factors = [1, 0.5, 0.25]
         fp = FractalPerlin2D(shape, resolutions, factors)
 
-
         self.X = fp().to(device).unsqueeze(1).detach()
-        import matplotlib.pyplot as plt
-        plt.imshow(self.X[0].swapaxes(0,2))
-        plt.show()
-        if dataset == 'abs':
-            self.Y = abs_pde(self.X)
-        elif dataset == 'heat' :
-            self.Y = heat_pde(self.X)
-        else:
-            raise ValueError("Unknown dataset")
+        self.Y = heat_pde(self.X, 0)
+
+        print(torch.std(self.X[0]), torch.std(self.Y[0]))
 
     def __len__(self):
         return len(self.X)
@@ -162,26 +148,23 @@ def discover(config, algebra, cosets):
         num_cosets=32,
         identity_in_rep=True,
         identity_out_rep=True, 
-        # a really small value is needed since the pde values themselves are so small
-        # that even incorrect symmetries generate small loss values
-        # in general, when there's no symmetry at all the model
-        # will go in the direction that's closest to symmetry (even if not true invariance)
-        # but this can in many times be undesirable
-        r3=0.1,
     )
 
-    dataset = PDEDataset(config.pde, config.N)
+    dataset = PDEDataset(config.N)
 
     gdn = LocalTrainer(PDEFeatureField, predictor, basis, dataset, config)   
+
     if algebra:
         gdn.train()
+
     if cosets:
         def relates(a, b):
             inv = a @ torch.inverse(b)
-            return torch.linalg.matrix_norm(inv - torch.eye(2, device=device)) < 0.1
+            # inv is a rotation matrix if its determinant is 1 and the two basis vectors are orthogonal
+            det = torch.linalg.det(inv)
+            return torch.abs(det - 1) < 0.1 and torch.abs(inv[0,0] * inv[1,0] + inv[1,0] * inv[1,1]) < 1
 
-        gdn.discover_cosets(relates, 28)
-
+        gdn.discover_cosets(relates, 8)
 
 if __name__ == '__main__':
     c = Config()
