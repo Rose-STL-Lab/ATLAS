@@ -10,7 +10,6 @@ from utils import get_device, rmse
 from group_basis import GroupBasis
 from local_symmetry import Predictor, LocalTrainer
 from config import Config
-from perlin_noise import PerlinNoise
 
 
 device = get_device()
@@ -19,9 +18,9 @@ IN_RAD = 14
 OUT_RAD = 6
 
 EXCLUSION_X = [0.1, 0.3]
-EXCLUSION_Y = [0.3, 0.6]
+EXCLUSION_Y = [0.2, 0.5]
 
-def heat_pde(x_in, boundary, boundary_val, alpha=1, dx=0.1, dt=0.01, t_steps=100):
+def heat_pde(x_in, boundary, boundary_val, alpha=1, dx=0.1, dt=0.01, t_steps=50):
     x_in[boundary] = boundary_val
 
     for _ in range(t_steps):
@@ -73,7 +72,7 @@ class PDEFeatureField(R2FeatureField):
         r = self.data.shape[-2]
         
         spots_r = [0.35, 0.42, 0.58, 0.75]
-        spots_c = [0.15, 0.25, 0.72, 0.85]
+        spots_c = [0.55, 0.65, 0.72, 0.85]
         locs = []
 
         dr = IN_RAD / r
@@ -143,8 +142,6 @@ class PDEDataset(torch.utils.data.Dataset):
 
         boundary = (EXCLUSION_X[0] < u) & (u < EXCLUSION_X[1]) & (EXCLUSION_Y[0] < v) & (v < EXCLUSION_Y[1])
         self.Y = heat_pde(self.X, boundary.unsqueeze(1), math.sqrt(2))
-
-        print("Std", torch.std(self.X[0]), torch.std(self.Y[0]))
 
     def __len__(self):
         return len(self.X)
