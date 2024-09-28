@@ -124,6 +124,10 @@ class GroupBasis(nn.Module):
 
         return pred.loss(y_atlas_true, g_y_atlas)
 
+    def norm_cosets(self):
+        det = torch.abs(torch.det(self.cosets).unsqueeze(-1).unsqueeze(-1))
+        return self.cosets / (det ** (1 / self.man_dim))
+
     def coset_step(self, x, pred):
         # for now, can only handle identity in and out rep
         assert self.identity_in_rep and self.identity_out_rep
@@ -132,7 +136,7 @@ class GroupBasis(nn.Module):
 
         # technically each chart is transformed the same way, 
         # but we ensure independence through the separate predictors elsewhere so it's fine
-        cosets = einops.repeat(self.cosets, 'c ... -> (c bs) ...', bs=bs * x.num_charts())
+        cosets = einops.repeat(self.norm_cosets(), 'c ... -> (c bs) ...', bs=bs * x.num_charts())
         in_rep = torch.eye(self.in_dim, device=device).unsqueeze(0).unsqueeze(0).repeat(bs * len(self.cosets), x.num_charts(), 1, 1)
         out_rep = torch.eye(self.out_dim, device=device).unsqueeze(0).unsqueeze(0).repeat(bs * len(self.cosets), x.num_charts(), 1, 1)
 
