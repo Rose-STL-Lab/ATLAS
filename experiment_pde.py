@@ -71,8 +71,8 @@ class PDEFeatureField(R2FeatureField):
         c = self.data.shape[-1]
         r = self.data.shape[-2]
         
-        spots_r = [0.35, 0.42, 0.58, 0.75]
-        spots_c = [0.55, 0.65, 0.72, 0.85]
+        spots_r = [0.42, 0.5, 0.65, 0.75]
+        spots_c = [0.65, 0.7, 0.78, 0.85]
         locs = []
 
         dr = IN_RAD / r
