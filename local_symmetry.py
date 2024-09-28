@@ -138,13 +138,13 @@ class LocalTrainer:
             full_losses_avg = np.mean(full_losses, axis=0)
             best = np.argmin(full_losses_avg)
 
-            print("Epoch", e, "Predictor loss", p_losses, "Best loss", full_losses_avg[best], "Best", self.basis.cosets[best].cpu().detach())
+            print("Epoch", e, "Predictor loss", p_losses, "Best loss", full_losses_avg[best], "Best", self.basis.norm_cosets()[best].cpu().detach())
    
             if e == self.config.epochs - 1:
                 inds = np.argsort(full_losses_avg)
 
                 final = []
-                for coset in self.basis.cosets[inds][:q]:
+                for coset in self.basis.norm_cosets()[inds][:q]:
                     for curr in final:
                         if relates(curr, coset):
                             break

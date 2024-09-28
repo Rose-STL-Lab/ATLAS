@@ -1,24 +1,32 @@
 import sys
 import torch
 from torch import nn
+import torchvision
 import numpy as np
 import tqdm
+import math
 from ff import R2FeatureField
 from utils import get_device, rmse
 from group_basis import GroupBasis
 from local_symmetry import Predictor, LocalTrainer
 from config import Config
-from pyperlin import FractalPerlin2D
+from perlin_noise import PerlinNoise
+
 
 
 device = get_device()
 
 IN_RAD = 14
-OUT_RAD = 7
+OUT_RAD = 6
 
-def heat_pde(x_in, mask, alpha=1, dx=0.1, dt=1, t_steps=1):
+EXCLUSION_X = [0.1, 0.3]
+EXCLUSION_Y = [0.3, 0.5]
+
+def heat_pde(x_in, boundary, boundary_val, alpha=0.3, dx=0.1, dt=0.1, t_steps=10):
+    x_in[boundary] = boundary_val
+
     for _ in range(t_steps):
-        x = torch.nn.functional.pad(x_in, (2, 2, 2, 2), 'replicate')
+        x = torch.nn.functional.pad(x_in, (2, 2, 2, 2), value=boundary_val)
 
         ddx = (x[..., 2:, 1:-1] - x[..., :-2, 1:-1]) / (2 * dx)
         ddy = (x[..., 1:-1, 2:] - x[..., 1:-1, :-2]) / (2 * dx)
@@ -29,6 +37,7 @@ def heat_pde(x_in, mask, alpha=1, dx=0.1, dt=1, t_steps=1):
         ddt = (dddx + dddy) * alpha
         
         x_in = x_in + dt * ddt
+        x_in[boundary] = boundary_val
 
     return x_in
 
@@ -64,10 +73,16 @@ class PDEFeatureField(R2FeatureField):
         c = self.data.shape[-1]
         r = self.data.shape[-2]
         
-        spots = [0.25, 0.42, 0.58, 0.75]
+        spots_r = [0.35, 0.42, 0.58, 0.75]
+        spots_c = [0.15, 0.6, 0.7, 0.85]
         locs = []
-        for i in spots:
-            for j in spots:
+
+        dr = IN_RAD / r
+        dc = IN_RAD / c
+        for i in spots_r:
+            for j in spots_c:
+                assert i + dr < EXCLUSION_X[0] or i - dr > EXCLUSION_X[1] or j + dr < EXCLUSION_Y[0] or j - dr > EXCLUSION_Y[1]
+
                 locs.append((r * i, c * j))
 
         self.locs = [(int(r), int(c)) for r, c in locs]
@@ -111,15 +126,26 @@ class PDEDataset(torch.utils.data.Dataset):
     def __init__(self, N):
         super().__init__()
 
-        shape = (N, 128, 128)
-        resolutions = [(2 ** i, 2 ** i) for i in range(1, 4)]
-        factors = [1, 0.5, 0.25]
-        fp = FractalPerlin2D(shape, resolutions, factors)
+        a = 6 * torch.randn(N, 1, 1, device=device) + 15
+        b = 3 * torch.randn(N, 1, 1, device=device)
+        c = (torch.randn(N, 1, 1, device=device).abs() + 1) / 2
 
-        self.X = fp().to(device).unsqueeze(1).detach()
-        self.Y = heat_pde(self.X, 0)
+        d = 5 * torch.randn(N, 1, 1, device=device) + 12
+        e = 3 * torch.randn(N, 1, 1, device=device)
+        f = (torch.randn(N, 1, 1, device=device).abs() + 1) / 2
 
-        print(torch.std(self.X[0]), torch.std(self.Y[0]))
+        rmax = 128
+        r = torch.arange(rmax, device=device)
+        u, v = torch.meshgrid(r, r, indexing='ij')
+        u = u.unsqueeze(0).tile(N, 1, 1).float() / rmax
+        v = v.unsqueeze(0).tile(N, 1, 1).float() / rmax
+
+        self.X = (c * torch.sin(a * u + b) + f * torch.cos(d * v + e)).unsqueeze(1)
+
+        boundary = (EXCLUSION_X[0] < u) & (u < EXCLUSION_X[1]) & (EXCLUSION_Y[0] < v) & (v < EXCLUSION_Y[1])
+        self.Y = heat_pde(self.X, boundary.unsqueeze(1), math.sqrt(2))
+
+        print("Std", torch.std(self.X[0]), torch.std(self.Y[0]))
 
     def __len__(self):
         return len(self.X)
@@ -148,6 +174,7 @@ def discover(config, algebra, cosets):
         num_cosets=32,
         identity_in_rep=True,
         identity_out_rep=True, 
+        r3=0.1
     )
 
     dataset = PDEDataset(config.N)
@@ -161,10 +188,12 @@ def discover(config, algebra, cosets):
         def relates(a, b):
             inv = a @ torch.inverse(b)
             # inv is a rotation matrix if its determinant is 1 and the two basis vectors are orthogonal
+            # det 1 should always be satisfied by our methodology, but doesn't hurt to confirm
+
             det = torch.linalg.det(inv)
             return torch.abs(det - 1) < 0.1 and torch.abs(inv[0,0] * inv[1,0] + inv[1,0] * inv[1,1]) < 1
 
-        gdn.discover_cosets(relates, 8)
+        gdn.discover_cosets(relates, 16)
 
 if __name__ == '__main__':
     c = Config()
