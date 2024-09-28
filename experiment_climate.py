@@ -163,6 +163,7 @@ class PadIco(torch.nn.Module):
 
         return y
 
+
 class StrideConv(nn.Module):
     def __init__(self, kernel_type, r, Cin, Cout, Rin, bias=True, smooth_vertices=False, stride=1):
         super().__init__()
@@ -254,6 +255,7 @@ class StrideConv(nn.Module):
         else:
             return self.process_vertices(y)
 
+
 class BatchNorm(nn.Module):
     def __init__(self, c):
         super().__init__()
@@ -268,6 +270,7 @@ class BatchNorm(nn.Module):
         y = y.unflatten(0, (-1, 5))
 
         return y.permute(0, 2, 3, 1, 4, 5) 
+
 
 class GaugeDownLayer(nn.Module):
     def __init__(self, kernel_type, r, c_in, c_out):
@@ -405,7 +408,6 @@ def dataset_iou(dataset):
             continue
 
         cm = torch.zeros((3, 3), device=device)
-        count = 0
         for i in range(len(v)):
             for j in range(i + 1, len(v)):
                 _, x = torch.max(v[i], dim=0)
@@ -414,7 +416,6 @@ def dataset_iou(dataset):
                 for r in range(3):
                     for c in range(3):
                         cm[r, c] += torch.sum((x == r) & (y == c))
-                count += x.numel()
 
         bg, tc, ar = ious(cm)
 
