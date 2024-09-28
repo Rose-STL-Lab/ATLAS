@@ -13,16 +13,15 @@ from config import Config
 from perlin_noise import PerlinNoise
 
 
-
 device = get_device()
 
 IN_RAD = 14
 OUT_RAD = 6
 
 EXCLUSION_X = [0.1, 0.3]
-EXCLUSION_Y = [0.3, 0.5]
+EXCLUSION_Y = [0.3, 0.6]
 
-def heat_pde(x_in, boundary, boundary_val, alpha=0.3, dx=0.1, dt=0.1, t_steps=10):
+def heat_pde(x_in, boundary, boundary_val, alpha=1, dx=0.1, dt=0.01, t_steps=100):
     x_in[boundary] = boundary_val
 
     for _ in range(t_steps):
@@ -74,7 +73,7 @@ class PDEFeatureField(R2FeatureField):
         r = self.data.shape[-2]
         
         spots_r = [0.35, 0.42, 0.58, 0.75]
-        spots_c = [0.15, 0.6, 0.7, 0.85]
+        spots_c = [0.15, 0.25, 0.72, 0.85]
         locs = []
 
         dr = IN_RAD / r
