@@ -15,6 +15,7 @@ class Config:
         parser.add_argument('--N', type=int, default=n,
                             help='for randomly generated datasets, the number of elements to generate')
 
+        parser.add_argument('--atlas', type=int, default=1, help='which atlas to use for the task')
         parser.add_argument('--reuse_predictor', default=False, action='store_true')
         parser.add_argument('--fixed_seed', default=False, action='store_true')
         parser.add_argument('--task', type=str)
@@ -32,6 +33,7 @@ class Config:
         self.epochs = args.epochs
         self.device = get_device()
 
+        self.atlas = args.atlas
         self.reuse_predictor = args.reuse_predictor
         self.task = args.task
 
