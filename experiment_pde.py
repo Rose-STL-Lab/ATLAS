@@ -18,7 +18,7 @@ EXCLUSION_X = [0.1, 0.3]
 EXCLUSION_Y = [0.2, 0.5]
 
 IN_RAD1 = 14
-OUT_RAD1 = 6
+OUT_RAD1 = 10
 ATLAS1 = [
                                (0.5, 0.15),  (0.675, 0.15),  (0.85, 0.15),
                                (0.5, 0.325), (0.675, 0.325), (0.85, 0.325),
@@ -27,7 +27,7 @@ ATLAS1 = [
     (0.15, 0.85),  (0.325, 0.85),  (0.5, 0.85),  (0.675, 0.85),  (0.85, 0.85),
 ]
 IN_RAD2 = 26
-OUT_RAD2 = 14
+OUT_RAD2 = 20
 ATLAS2 = [
     (0.65, 0.3),
     (0.675, 0.625),
@@ -87,7 +87,7 @@ class PDEFeatureField(R2FeatureField):
         r = self.data.shape[-2]
 
         atlas = ATLAS1 if config.atlas == 1 else ATLAS2
-        self.locs = [(int(u * r), int(v * c)) for u, v in locs]
+        self.locs = [(int(u * r), int(v * c)) for u, v in atlas]
 
 
 class PDEPredictor(nn.Module, Predictor):
@@ -149,101 +149,6 @@ class PDEDataset(torch.utils.data.Dataset):
         boundary = (EXCLUSION_X[0] < u) & (u < EXCLUSION_X[1]) & (EXCLUSION_Y[0] < v) & (v < EXCLUSION_Y[1])
         self.Y = heat_pde(self.X, boundary.unsqueeze(1), math.sqrt(2))
 
-        """
-        import matplotlib.pyplot as plt
-        from scipy.ndimage import binary_dilation, binary_erosion
-
-        def create_boundary_overlay(boundary, color=[1,1,1,1], border=[0,0,0,1]):
-            overlay = np.zeros((*boundary.shape, 4))  # RGBA
-            boundary = boundary.T
-
-            overlay[boundary] = color
-            # Find the rectangle coordinates
-            rows, cols = np.where(boundary)
-            top, bottom = rows.min(), rows.max()
-            left, right = cols.min(), cols.max()
-
-            # Draw black edges
-            overlay[top, left:right+1] = border
-            overlay[bottom, left:right+1] = border
-            overlay[top:bottom+1, left] = border
-            overlay[top:bottom+1, right] = border
-
-            return overlay
-
-        # Create the boundary overlay
-        boundary_overlay = create_boundary_overlay(boundary[0].cpu().numpy())
-
-        # Plotting
-        vmin = self.X[0].min()
-        vmax = self.X[0].max()
-
-        _, (ax0, ax1) = plt.subplots(nrows=1, ncols=2, figsize=(9,4))
-
-        # Plot for t=0
-        im0 = ax0.imshow(100 + self.X[0].swapaxes(0, 2).cpu(), vmin=vmin, vmax=vmax, cmap='gray')
-        ax0.imshow(boundary_overlay)  # Overlay the boundary
-        u = u[0]
-        v = v[0]
-        for i, loc in enumerate(ATLAS1):
-            d = IN_RAD1 / 128
-            boundary = (loc[0] - d < u) & (u < loc[0] + d) & (loc[1] - d < v) & (v < loc[1] + d)
-
-            if i % 2:
-                col = [1, 0.7, 0.7, 0.8]
-                ax0.imshow(create_boundary_overlay(boundary.cpu().numpy(), color=col, border=[0.7,0.7,0.7,1]))
-
-        for i, loc in enumerate(ATLAS1):
-            d = IN_RAD1 / 128
-            boundary = (loc[0] - d < u) & (u < loc[0] + d) & (loc[1] - d < v) & (v < loc[1] + d)
-            if i % 2 == 0:
-                col = [0.7, 0.7, 1, 0.8] 
-                ax0.imshow(create_boundary_overlay(boundary.cpu().numpy(), color=col, border=[0.7,0.7,0.7,1]))
-        for loc in ATLAS1:
-            d = IN_RAD1 / 128
-            boundary = (loc[0] - d < u) & (u < loc[0] + d) & (loc[1] - d < v) & (v < loc[1] + d)
-            ax0.imshow(create_boundary_overlay(boundary.cpu().numpy(), color=[0,0,0,0], border=[0.7,0.7,0.7,1]))
-        ax0.set_xticks([])
-        ax0.set_yticks([])
-        for spine in ax0.spines.values():
-            spine.set_visible(True)
-            spine.set_color('black')
-            spine.set_linewidth(2)
-
-        # Plot for t=1
-        im1 = ax1.imshow(100 + self.Y[0].swapaxes(0, 2).cpu(), vmin=vmin, vmax=vmax, cmap='gray')
-        im2 = ax1.imshow(boundary_overlay)  # Overlay the boundary
-        ax1.set_yticks([])
-        ax1.set_xticks([])
-        for spine in ax1.spines.values():
-            spine.set_visible(True)
-            spine.set_color('black')
-            spine.set_linewidth(2)
-
-        for i, loc in enumerate(ATLAS2):
-            d = IN_RAD2 / 128
-            boundary = (loc[0] - d < u) & (u < loc[0] + d) & (loc[1] - d < v) & (v < loc[1] + d)
-
-            if i % 2:
-                col = [1, 0.7, 0.7, 0.8]
-                ax1.imshow(create_boundary_overlay(boundary.cpu().numpy(), color=col, border=[0.7,0.7,0.7,1]))
-
-        for i, loc in enumerate(ATLAS2):
-            d = IN_RAD2 / 128
-            boundary = (loc[0] - d < u) & (u < loc[0] + d) & (loc[1] - d < v) & (v < loc[1] + d)
-            if i % 2 == 0:
-                col = [0.7, 0.7, 1, 0.8] 
-                ax1.imshow(create_boundary_overlay(boundary.cpu().numpy(), color=col, border=[0.7,0.7,0.7,1]))
-        for loc in ATLAS2:
-            d = IN_RAD2 / 128
-            boundary = (loc[0] - d < u) & (u < loc[0] + d) & (loc[1] - d < v) & (v < loc[1] + d)
-            ax1.imshow(create_boundary_overlay(boundary.cpu().numpy(), color=[0,0,0,0], border=[0.7,0.7,0.7,1]))
-
-        plt.tight_layout()
-        plt.savefig('atlas.pdf', format='pdf', dpi=1200)
-        plt.show()
-        """
-
     def __len__(self):
         return len(self.X)
 
@@ -271,7 +176,7 @@ def discover(config, algebra, cosets):
     basis = GroupBasis(
         1, 2, 1, 1, config.standard_basis, 
         in_rad=in_rad, out_rad=out_rad, 
-        num_cosets=32,
+        num_cosets=16,
         identity_in_rep=True,
         identity_out_rep=True, 
         r3=0.1
@@ -293,16 +198,16 @@ def discover(config, algebra, cosets):
             det = torch.linalg.det(inv)
             return torch.abs(det - 1) < 0.1 and torch.abs(inv[0,0] * inv[1,0] + inv[1,0] * inv[1,1]) < 1
 
-        gdn.discover_cosets(relates, 16)
+        gdn.discover_cosets(relates, 8)
 
 if __name__ == '__main__':
     config = Config()
 
     if config.task == 'discover':
         discover(config, True, True)
-    elif c.task == 'discover_algebra':
+    elif config.task == 'discover_algebra':
         discover(config, True, False)
-    elif c.task == 'discover_cosets':
+    elif config.task == 'discover_cosets':
         discover(config, False, True)
     else:
         print("Unknown task for PDE")
