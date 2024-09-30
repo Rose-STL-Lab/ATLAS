@@ -197,8 +197,14 @@ def discover(config, algebra, cosets):
 
             det = torch.linalg.det(inv)
             return torch.abs(det - 1) < 0.1 and torch.abs(inv[0,0] * inv[1,0] + inv[1,0] * inv[1,1]) < 1
+        if config.atlas == 1:
+            lie = torch.tensor([[[ 0.012776216, -1.000309944],
+                    [ 1.002594471, -0.012438751]]])
+        else:
+            lie = torch.tensor([[[-0.152537078, 1.001019597],
+                    [-1.004260302, 0.158555597]]])
 
-        gdn.discover_cosets(relates, 8)
+        gdn.discover_cosets(lie, 8)
 
 if __name__ == '__main__':
     config = Config()

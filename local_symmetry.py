@@ -4,7 +4,7 @@ import tqdm
 from abc import ABC, abstractmethod
 
 from config import Config
-from utils import rmse
+from utils import rmse, in_lie_algebra
 
 
 class Predictor(ABC):
@@ -111,7 +111,7 @@ class LocalTrainer:
             print("Discovered Basis \n", self.basis.summary())
             print("Epoch", e, "Predictor loss", p_losses, "Basis loss", b_losses, "Basis reg", b_reg)
 
-    def discover_cosets(self, relates, q):
+    def discover_cosets(self, lie_algebra, q):
         loader = self.loader()
 
         for e in range(self.config.epochs):
@@ -146,7 +146,7 @@ class LocalTrainer:
                 final = []
                 for coset in self.basis.norm_cosets()[inds][:q]:
                     for curr in final:
-                        if relates(curr, coset):
+                        if in_lie_algebra(curr @ torch.inv(coset), lie_algebra):
                             break
                     else:
                         final.append(coset)

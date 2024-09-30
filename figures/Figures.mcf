@@ -416,7 +416,7 @@
 		pos: {2, 1.2, 0}
 	
 	loss_box = Box:
-		text: "\textbf{Loss} \\ $ \sum| \sigma_{\alpha}(g_{i} * x) - g_{i} * \sigma_{\alpha}(x) |$"
+		text: "\textbf{Loss} \\ $ \sum| \sigma_{c}(g_{i} \cdot x) - g_{i} \cdot \sigma_{c}(x) |$"
 		color: rgb(loss_bg)
 		tc: BLACK
 		w: 2.2
@@ -807,16 +807,6 @@
 		pos: q
 		mag: 0.6
 		rot: {0,-0.1,0}
-		col_boost: 0
-	rsphere += VF:
-		pos: q
-		mag: 0.3
-		rot: {-0.5, -1, 0}
-		col_boost: 0
-	rsphere += VF:
-		pos: q
-		mag: 0.3
-		rot: {0.7,-0.5,0}
-		col_boost: 0.5
+		col_boost: 0.1
 	p += Set:
 		vars&: {lsphere, rsphere}
