@@ -5,7 +5,7 @@ from torch import nn
 import pandas as pd
 import numpy as np
 import tqdm
-from utils import get_device
+from utils import get_device, in_lie_algebra
 from local_symmetry import Predictor
 from config import Config
 
@@ -54,8 +54,6 @@ class TopTagging(torch.utils.data.Dataset):
         if not flatten:
             self.X = self.X.reshape(-1, n_component, 4)
         self.len = self.X.shape[0]
-
-        print("Min", torch.min(self.X[:, :, 0]))
 
         self.y = torch.LongTensor(df[:, -1]).to(device)
 
@@ -160,7 +158,7 @@ def cosets(config, predictor, loader):
                 diff = torch.linalg.inv(a) @ b
                 # previously discovered result
                 # feel free to change with result
-                lie = tensor([
+                lie = torch.tensor([
                         [[     0.000213433,     -0.005174065,     -0.003704194,
                         0.005485935],
                         [    -0.000220797,      0.007107087,      9.064596176,
@@ -223,7 +221,7 @@ def cosets(config, predictor, loader):
                         0.009291197],
                         [    -0.818222344,     -0.009369194,      0.006323077,
                         0.004909910]]
-                ], device=device)
+                ], device=diff.device)
 
                 return in_lie_algebra(diff, lie)
 
