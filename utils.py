@@ -11,24 +11,25 @@ def mae(xx, yy):
     return torch.mean(torch.abs(xx - yy))
 
 
-def in_lie_algebra(matrix, basis, tolerance=0.1, steps=10000):
+def in_lie_algebra(matrix, basis, absolute=0.1, steps=10000):
     if torch.det(matrix) < 0:
         return False
 
     assert steps > 0
 
+    matrix = matrix.detach().clone()
     weights = torch.nn.Parameter(torch.zeros(len(basis), device=basis.device))
     optim = torch.optim.Adam([weights])
 
     for _ in range(steps):
         sampled = torch.matrix_exp(torch.einsum('w, wij -> ij', weights, basis))
-        loss = (sampled - matrix).abs().mean()
+        loss = ((sampled - matrix) ** 2).mean()
 
         optim.zero_grad()
         loss.backward()
         optim.step()
     
-    return loss < tolerance
+    return loss - absolute < 0
 
 def get_device(no_mps=True):
     if no_mps:

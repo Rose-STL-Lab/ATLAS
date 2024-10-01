@@ -166,7 +166,7 @@ def discover(config, algebra, cosets):
     print("Task: discovering", targets)
 
     if config.reuse_predictor:
-        predictor = torch.load("predictors/pde.pt")
+        predictor = torch.load("predictors/pde.pt").to(device)
     else:
         predictor = PDEPredictor()
 
@@ -190,19 +190,12 @@ def discover(config, algebra, cosets):
         gdn.train()
 
     if cosets:
-        def relates(a, b):
-            inv = a @ torch.inverse(b)
-            # inv is a rotation matrix if its determinant is 1 and the two basis vectors are orthogonal
-            # det 1 should always be satisfied by our methodology, but doesn't hurt to confirm
-
-            det = torch.linalg.det(inv)
-            return torch.abs(det - 1) < 0.1 and torch.abs(inv[0,0] * inv[1,0] + inv[1,0] * inv[1,1]) < 1
         if config.atlas == 1:
-            lie = torch.tensor([[[ 0.012776216, -1.000309944],
-                    [ 1.002594471, -0.012438751]]])
+            lie = torch.tensor([[[-0.050015654,  0.999998927],
+                    [-1.015076280,  0.051725421]]], device=device)
         else:
             lie = torch.tensor([[[-0.152537078, 1.001019597],
-                    [-1.004260302, 0.158555597]]])
+                    [-1.004260302, 0.158555597]]], device=device)
 
         gdn.discover_cosets(lie, 8)
 

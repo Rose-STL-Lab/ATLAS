@@ -146,7 +146,7 @@ class LocalTrainer:
                 final = []
                 for coset in self.basis.norm_cosets()[inds][:q]:
                     for curr in final:
-                        if in_lie_algebra(curr @ torch.inv(coset), lie_algebra):
+                        if in_lie_algebra(curr @ torch.inverse(coset), lie_algebra):
                             break
                     else:
                         final.append(coset)
