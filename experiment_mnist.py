@@ -137,7 +137,7 @@ class MNISTPredictor(nn.Module, Predictor):
 def save_image(img, name):
     import matplotlib.pyplot as plt
 
-    plt.imshow(torch.flip(img.swapaxes(0, 2), (1,)), cmap='gray')
+    plt.imshow(torch.flip(img.cpu().swapaxes(0, 2), (1,)), cmap='gray')
     plt.axis('off')
     plt.savefig(name, format='pdf', dpi=1200)
     plt.tight_layout()
@@ -300,7 +300,7 @@ def lie_gan_discover(config):
         xyz = torch.stack((x, y, z), dim=-1).to(device)
 
         # inverted x y z for each pixel
-        xyz_inv = torch.einsum('bvw, ijw -> bijv', torch.inverse(g), xyz)
+        xyz_inv = torch.einsum('bvw, ijw -> bijv', torch.inverse(g).to(device), xyz)
 
         # mapped theta phi for each pixel
         tau = 2 * math.pi
