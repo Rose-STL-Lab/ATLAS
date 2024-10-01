@@ -103,6 +103,7 @@ class ClimateIcoDataset:
         self.lat = (torch.acos(grid[..., 2]) * num_lat / math.pi).round().long().clip(0, num_lat - 1)
         self.lon = ((math.pi + torch.atan2(grid[..., 1], grid[..., 0])) * num_lon / (2 * math.pi)).round().long().clip(0, num_lon - 1)
 
+
     def __len__(self):
         return len(self.dataset)
 
@@ -403,7 +404,7 @@ def dataset_iou(dataset):
     bg_iou = []
     tc_iou = []
     ar_iou = []
-    for _, v in dataset.items():
+    for _, (_, v) in dataset.items():
         if len(v) == 1:
             continue
 
@@ -417,7 +418,7 @@ def dataset_iou(dataset):
                     for c in range(3):
                         cm[r, c] += torch.sum((x == r) & (y == c))
 
-        bg, tc, ar = ious(cm)
+        bg, tc, ar, _, _ = ious(cm)
 
         bg_iou.append(bg)
         tc_iou.append(tc)
@@ -461,6 +462,7 @@ def train(config, kernel_type):
     config.lr = 0.001
 
     train_dataset = ClimateIcoDataset(train_path, config)
+
     test_dataset = ClimateIcoDataset(test_path, config)
 
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=config.batch_size, shuffle=True)

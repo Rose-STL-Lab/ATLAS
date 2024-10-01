@@ -536,7 +536,7 @@
 	
 	tree projs = {}
 	projs += Text:
-		text: "\begin{center} \raisebox{0.9ex}{$\uparrow$} \\ $\varphi_{3}^{-1*}$ \end{center}"
+		text: "\begin{center} \raisebox{0.9ex}{$\uparrow$} \\ $(\varphi_{3}^{-1})^{*}$ \end{center}"
 		scale: 0.45
 		stroke: BLACK
 		fill: BLACK
