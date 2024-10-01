@@ -47,7 +47,7 @@ class GroupBasis(nn.Module):
         self.in_basis = nn.Parameter(torch.empty((num_basis, in_dim, in_dim), dtype=dtype).to(device))
         self.out_basis = nn.Parameter(torch.empty((num_basis, out_dim, out_dim), dtype=dtype).to(device))
 
-        for tensor in [self.in_basis, self.out_basis]:
+        for tensor in [self.in_basis, self.lie_basis, self.out_basis]:
             nn.init.normal_(tensor, 0, 0.02)
 
         cosets = torch.empty((num_cosets, man_dim, man_dim), dtype=dtype).to(device)

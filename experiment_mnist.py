@@ -170,6 +170,7 @@ class MNISTDataset(torch.utils.data.Dataset):
                 y_curr = torch.zeros(NUM_CLASS, p, p)
                 y_curr[y] = 1
 
+                x_flat[:, r - 14: r + 14, c - 14: c + 14] = x_curr
                 y_flat[:, r - p // 2: r + p // 2, c - p // 2: c + p // 2] = y_curr
 
             # only label pixels with white
@@ -179,6 +180,7 @@ class MNISTDataset(torch.utils.data.Dataset):
             self.y[i] = self.project(y_flat)
             # label unmarked pixels as background
             self.y[i][10] = torch.sum(self.y[i], dim=-3) == 0
+
 
 
     # equirectangular nearest neighbor

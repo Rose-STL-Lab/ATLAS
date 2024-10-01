@@ -416,7 +416,7 @@
 		pos: {2, 1.2, 0}
 	
 	loss_box = Box:
-		text: "\textbf{Loss} \\ $ \sum| \sigma_{c}(g_{i} \cdot x) - g_{i} \cdot \sigma_{c}(x) |$"
+		text: "{\textbf{Loss}} $$ \sum_{i, c} \mathcal{L}(f_{c}(g_{i} \cdot x),  g_{i} \cdot f_{c}(x))$$"
 		color: rgb(loss_bg)
 		tc: BLACK
 		w: 2.2
@@ -543,13 +543,13 @@
 	projs += projs[0]
 	projs[0] = Shifted:
 		mesh: projs[0]
-		delta: {-1.95, 1.55, 0}
+		delta: {-1.975, 1.55, 0}
 	projs[0] = Rotated:
 		mesh: projs[0]
 		rotation: {0.5, 0.3, 0}
 	projs[1] = Shifted:
 		mesh: projs[1]
-		delta: {1.65, 1.55, 0}
+		delta: {1.6, 1.55, 0}
 	projs[1] = Rotated:
 		mesh: projs[1]
 		rotation: {0.6, -0.2, 0}
@@ -562,9 +562,9 @@
 		col: BLACK
 	labels += Rotated:
 		mesh: Tx:
-			tex: "\sigma"
-			scale: 2
-			at: {0, 0.175, 0}
+			tex: "f"
+			scale: 1.5
+			at: {0, 0.225, 0}
 			col: BLACK
 		rotation: {-0.8, 0, 0}
 	labels += Rotated:
@@ -575,8 +575,8 @@
 			col: sb_col
 		rotation: {-0.8, 0, 0}
 	labels += Tx:
-		tex: "\sigma_3"
-		scale: 0.65
+		tex: "f_3"
+		scale: 0.6
 		at: {0.1, 2.0, 0}
 		col: BLACK
 	var burn = {}
@@ -586,13 +586,13 @@
 		at: {0.1, 1.75, 0}
 		col: sb_col
 	labels += Tx:
-		tex: "\text{} \sigma_2"
-		scale: 0.65
+		tex: "\text{} f_2"
+		scale: 0.6
 		at: {0.2, 1.05, 0}
 		col: BLACK
 	labels += Tx:
-		tex: "\text{} \sigma_1"
-		scale: 0.65
+		tex: "\text{} f_1"
+		scale: 0.6
 		at: {-0.2, -0.67, 0}
 		col: BLACK
 	labels += Tx:
@@ -684,7 +684,7 @@
 		fill: BLACK
 	labels += Label:
 		mesh: arrows
-		str: "$\sigma_i$"
+		str: "$f_c$"
 		scale: 0.75
 		dir: LEFT
 		stroke: CLEAR
@@ -698,7 +698,7 @@
 		fill: BLACK
 	labels += Label:
 		mesh: arrows
-		str: "$\sigma_i$"
+		str: "$f_c$"
 		scale: 0.75
 		dir: RIGHT
 		stroke: CLEAR
@@ -706,14 +706,14 @@
 	labels += Label:
 		mesh: {x, gx}
 		str: "input charts"
-		scale: 1
+		scale: 0.75
 		dir: UP
 		stroke: sb_col
 		fill: sb_col
 	labels += Label:
 		mesh: {fx, fgx}
 		str: "output charts"
-		scale: 1
+		scale: 0.75
 		dir: DOWN
 		stroke: sb_col
 		fill: sb_col
