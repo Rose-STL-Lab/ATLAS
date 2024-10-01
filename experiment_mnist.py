@@ -173,7 +173,7 @@ class MNISTDataset(torch.utils.data.Dataset):
                 theta = 90 + (h(0 * i + jp) % (2 * rotate) - rotate if rotate else 0)
 
                 x, y = self.dataset[jp]
-                x_curr = torchvision.transforms.functional.rotate(x, theta)
+                x_curr = torchvision.transforms.functional.rotate(x, theta).to(device)
                 if i == 1:
                     import numpy as np
 
