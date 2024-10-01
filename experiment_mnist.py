@@ -134,15 +134,6 @@ class MNISTPredictor(nn.Module, Predictor):
         return True
 
 
-def save_image(img, name):
-    import matplotlib.pyplot as plt
-
-    plt.imshow(torch.flip(img.cpu().swapaxes(0, 2), (1,)), cmap='gray')
-    plt.axis('off')
-    plt.savefig(name, format='pdf', dpi=1200)
-    plt.tight_layout()
-    plt.show()
-
 class MNISTDataset(torch.utils.data.Dataset):
     def __init__(self, N, rotate=180, train=True):
         self.dataset = datasets.MNIST(
@@ -158,10 +149,10 @@ class MNISTDataset(torch.utils.data.Dataset):
         self.x = torch.zeros(N, 1, self.w, self.h, device=device)
         self.y = torch.zeros(N, NUM_CLASS, self.w, self.h, device=device)
 
-        h = lambda x : hash(str(x + 15))
+        h = lambda x : hash(str(x))
 
         for i in range(N):
-            j = [h(0 * i) % N, (h(0 * i) + 1) % N, (h(0 * i) + 2) % N]
+            j = [h(i) % N, (h(i) + 1) % N, (h(i) + 2) % N]
             starts = [(int(self.w / 6), 16), (int(self.w / 2), 16), (int(self.w * 5 / 6), 16)]
 
             # x_flat/y_flat represent the digits on a cylinder
@@ -170,36 +161,10 @@ class MNISTDataset(torch.utils.data.Dataset):
             y_flat = torch.zeros(NUM_CLASS, self.w, 32, device=device)
 
             for jp, (r, c) in list(zip(j, starts)):
-                theta = 90 + (h(0 * i + jp) % (2 * rotate) - rotate if rotate else 0)
+                theta = 90 + (h(i + jp) % (2 * rotate) - rotate if rotate else 0)
 
                 x, y = self.dataset[jp]
                 x_curr = torchvision.transforms.functional.rotate(x, theta).to(device)
-                if i == 1:
-                    import numpy as np
-
-                    theta = np.random.normal()
-                    width = 28
-                    height = 28
-
-                    y_, x = torch.meshgrid(torch.arange(height, device=device), torch.arange(width, device=device), indexing='ij')
-                    grid = torch.stack([x, y_], dim=-1).float()
-                    grid = grid - torch.tensor([width/2, height/2], device=device)
-
-                    matrix = torch.matrix_exp(theta * torch.tensor([
-                        [0.030078765, -1.000410318],
-                        [ 0.999589324,  0.020011943]
-                    ]))
-
-                    print(matrix, theta)
-
-                    transformed_grid = torch.einsum('ji,hwj->hwi', matrix, grid.to(matrix.device))
-                    transformed_grid = transformed_grid.to(device) + torch.tensor([width/2, height/2], device=device)
-
-                    transformed_grid[:, :, 0] = transformed_grid[:, :, 0] / (width - 1) * 2 - 1
-                    transformed_grid[:, :, 1] = transformed_grid[:, :, 1] / (height - 1) * 2 - 1
-
-                    x_curr = torch.nn.functional.grid_sample(x_curr.unsqueeze(0), transformed_grid.unsqueeze(0), align_corners=True, padding_mode='border', mode='bilinear')
-                x_flat[:, r - 14: r + 14, c - 14: c + 14] = x_curr
 
                 p = 32
                 y_curr = torch.zeros(NUM_CLASS, p, p)
@@ -322,21 +287,6 @@ def lie_gan_discover(config):
 
     dataset = MNISTDataset(config.N, rotate=60)
     loader = torch.utils.data.DataLoader(dataset, batch_size=config.batch_size, shuffle=True)
-
-    x = dataset[0][0]
-    a = torch.tensor([0.8571, -1.6808, -0.1015]) * 0.5
-    g = torch.tensor([
-        [0,a[0],a[1]],
-        [-a[0],0,a[2]],
-        [-a[1],-a[2],0],
-    ]).matrix_exp()
-    print(g)
-    gx = transform(g.unsqueeze(0), x.unsqueeze(0), False)[0]
-    lx = dataset[1][0]
-
-    save_image(x, "untransformed.pdf")
-    save_image(gx, "liegan_transformed.pdf")
-    save_image(lx, "atlas_transformed.pdf")
 
     train_lie_gan(generator, discriminator, loader, config.epochs, 2e-4, 1e-3, 'cosine', 1e-2, 2, 0.0, 1.0, device, print_every=1)
 
