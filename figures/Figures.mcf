@@ -416,7 +416,7 @@
 		pos: {2, 1.2, 0}
 	
 	loss_box = Box:
-		text: "{\textbf{Loss}} $$ \sum_{i, c} \mathcal{L}(f_{c}(g_{i} \cdot x),  g_{i} \cdot f_{c}(x))$$"
+		text: "{\textbf{Loss}} $$ \sum_{\ell, c} \mathcal{L}(\Phi_{c}(g_{\ell} \cdot x), g_{\ell} \cdot \Phi_{c}(x))$$"
 		color: rgb(loss_bg)
 		tc: BLACK
 		w: 2.2
@@ -451,7 +451,7 @@
 	eqn += CosetRing:
 		at: ORIGIN
 		matrices: normed_mats
-		label: "$g_i$"
+		label: "$g_{\ell}$"
 	eqn += Text:
 		text: "$\to$"
 		scale: 0.5
@@ -562,7 +562,7 @@
 		col: BLACK
 	labels += Rotated:
 		mesh: Tx:
-			tex: "f"
+			tex: "\Phi"
 			scale: 1.5
 			at: {0, 0.225, 0}
 			col: BLACK
@@ -575,7 +575,7 @@
 			col: sb_col
 		rotation: {-0.8, 0, 0}
 	labels += Tx:
-		tex: "f_3"
+		tex: "\Phi_3"
 		scale: 0.6
 		at: {0.1, 2.0, 0}
 		col: BLACK
@@ -586,12 +586,12 @@
 		at: {0.1, 1.75, 0}
 		col: sb_col
 	labels += Tx:
-		tex: "\text{} f_2"
+		tex: "\text{} \Phi_2"
 		scale: 0.6
 		at: {0.2, 1.05, 0}
 		col: BLACK
 	labels += Tx:
-		tex: "\text{} f_1"
+		tex: "\text{} \Phi_1"
 		scale: 0.6
 		at: {-0.2, -0.67, 0}
 		col: BLACK
@@ -680,28 +680,28 @@
 		str: "$g$"
 		scale: 0.75
 		dir: UP
-		stroke: CLEAR
+		stroke: BLACK
 		fill: BLACK
 	labels += Label:
 		mesh: arrows
-		str: "$f_c$"
+		str: "$\Phi_c$"
 		scale: 0.75
 		dir: LEFT
-		stroke: CLEAR
+		stroke: BLACK
 		fill: BLACK
 	labels += Label:
 		mesh: arrows
 		str: "$g$"
 		scale: 0.75
 		dir: DOWN
-		stroke: CLEAR
+		stroke: BLACK
 		fill: BLACK
 	labels += Label:
 		mesh: arrows
-		str: "$f_c$"
+		str: "$\Phi_c$"
 		scale: 0.75
 		dir: RIGHT
-		stroke: CLEAR
+		stroke: BLACK
 		fill: BLACK
 	labels += Label:
 		mesh: {x, gx}
