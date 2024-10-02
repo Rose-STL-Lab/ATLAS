@@ -1,4 +1,3 @@
-# Modified from LieGAN Codebase (https://github.com/Rose-STL-Lab/LieGAN/blob/master)
 import sys
 import torch
 from torch import nn
