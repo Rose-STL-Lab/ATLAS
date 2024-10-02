@@ -35,6 +35,23 @@ python3 experiment_toptagging.py --task discover --epochs 10
 
 To run the downstream tasks, we refer to [LieGAN](https://github.com/Rose-STL-Lab/LieGAN).
 
+### PDE
+Dataset is simulated on demand and nothing needs to be downloaded.
+
+Discover algebra
+```
+python3 experiment_pde.py --task discover_algebra --epochs 10
+```
+expected results: so2 generator.
+
+Discover cosets
+```
+python3 experiment_pde.py --task discover_cosets --epochs 10
+```
+expected results: 2 cosets: identity and reflection.
+
+By default the first atlas (19 charts) is used. To use the second atlas (3 charts) instead, pass ```--atlas 2``` to either command.
+
 ### MNIST
 Dataset should be downloaded automatically upon first run.
 
@@ -84,24 +101,6 @@ Run downstream gauge equvariant CNN with GL+(2) gauge group (in reality it's not
 python3 experiment_climate.py --task downstream_discovered --epochs 20 --batch_size 4
 ```
 expected results: roughly 0.48 mean iou (essentialy comparable performance to baseline, with 7x less parameters).
-
-### PDE
-Dataset is simulated on demand and nothing needs to be downloaded.
-
-Discover algebra
-```
-python3 experiment_pde.py --task discover_algebra --epochs 10
-```
-expected results: so2 generator.
-
-Discover cosets
-```
-python3 experiment_pde.py --task discover_cosets --epochs 10
-```
-expected results: 2 cosets: identity and reflection.
-
-By default the first atlas (19 charts) is used. To use the second atlas (3 charts) instead, pass ```--atlas 2``` to either command.
-
 
 ### Custom Identity Component
 When discovering cosets, the model must use an already discovered Lie algebra to determine the identity component. In our work, this is hard coded based on a result the authors ran manually. If you would like to use your own discovered version, replace the appropriate tensors in ```experiment_toptagging.py``` and/or ```experiment_pde.py```
