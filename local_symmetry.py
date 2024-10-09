@@ -141,6 +141,7 @@ class LocalTrainer:
             print("Epoch", e, "Predictor loss", p_losses, "Best loss", full_losses_avg[best], "Best", self.basis.norm_cosets()[best].cpu().detach())
    
             if e == self.config.epochs - 1:
+                print("Filtering duplicate cosets...")
                 inds = np.argsort(full_losses_avg)
 
                 final = []
