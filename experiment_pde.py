@@ -127,8 +127,10 @@ class PDEPredictor(nn.Module, Predictor):
 
 
 class PDEDataset(torch.utils.data.Dataset):
-    def __init__(self, N):
+    def __init__(self, N, seed=0):
         super().__init__()
+
+        torch.manual_seed(seed)
 
         a = 6 * torch.randn(N, 1, 1, device=device) + 15
         b = 3 * torch.randn(N, 1, 1, device=device)
@@ -194,8 +196,8 @@ def discover(config, algebra, cosets):
             lie = torch.tensor([[[-0.050015654,  0.999998927],
                     [-1.015076280,  0.051725421]]], device=device)
         else:
-            lie = torch.tensor([[[-0.252537078, 1.001019597],
-                    [-1.004260302, 0.258555597]]], device=device)
+            [tensor([[[-0.182206243, -1.000181198],
+                    [ 1.024214745,  0.188963503]]], device=device)]
 
         gdn.discover_cosets(lie, 8)
 
