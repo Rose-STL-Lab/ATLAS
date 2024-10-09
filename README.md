@@ -18,19 +18,19 @@ Download dataset from [here](https://zenodo.org/record/2603256) to `data/top-tag
 
 Discover Lie algebra. You can optionally use the `--standard_basis` flag to report results in standard form. However, this sometimes produces duplicate generators.
 ```
-python3 experiment_toptagging.py --task discover_algebra --epochs 10
+python3 experiment_toptagging.py --task discover_algebra --epochs 10 --fixed_seed
 ```
 expected results: so(1, 3) basis with possibly an additional scaling generator.
 
 After discovering Lie algebra (and more importantly, having a good predictor), you can discover the various cosets.
 ```
-python3 experiment_toptagging.py --task discover_cosets --epochs 3 --reuse_predictor
+python3 experiment_toptagging.py --task discover_cosets --epochs 3 --reuse_predictor --fixed_seed
 ```
 expected results: two reported cosets: identity and parity representatives.
 
 Alternatively, you can discover both in one go. The downside is that the epoch count is the same for both so the cosets portion may take a while.
 ```
-python3 experiment_toptagging.py --task discover --epochs 10
+python3 experiment_toptagging.py --task discover --epochs 10 --fixed_seed
 ```
 
 To run the downstream tasks, we refer to [LieGAN](https://github.com/Rose-STL-Lab/LieGAN).
@@ -40,13 +40,13 @@ Dataset is simulated on demand and nothing needs to be downloaded.
 
 Discover algebra
 ```
-python3 experiment_pde.py --task discover_algebra --epochs 10
+python3 experiment_pde.py --task discover_algebra --epochs 10 --fixed_seed
 ```
 expected results: so2 generator.
 
 Discover cosets
 ```
-python3 experiment_pde.py --task discover_cosets --epochs 10
+python3 experiment_pde.py --task discover_cosets --epochs 10 --fixed_seed
 ```
 expected results: 2 cosets: identity and reflection.
 
@@ -61,7 +61,7 @@ python3 experiment_mnist.py --task discover --epochs 10 --fixed_seed
 ```
 expected results: generator of so(2).
 
-Use LieGAN to attempt to discover global symmetry
+Use SO3LieGAN to attempt to discover global symmetry
 ```
 python3 experiment_mnist.py --task liegan_discover --epochs 10 --fixed_seed
 ```
