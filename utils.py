@@ -30,7 +30,7 @@ def in_lie_algebra(matrix, basis, absolute=0.1, steps=10000):
 
 def get_device(no_mps=True):
     if no_mps:
-        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        return torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
     
     return torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 

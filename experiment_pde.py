@@ -193,8 +193,8 @@ def discover(config, algebra, cosets):
 
     if cosets:
         if config.atlas == 1:
-            lie = torch.tensor([[[-0.050015654,  0.999998927],
-                    [-1.015076280,  0.051725421]]], device=device)
+            lie = [tensor([[[-0.027137317, -1.000092626],
+                    [ 1.016282678,  0.029424636]]], device=device)]
         else:
             [tensor([[[-0.182206243, -1.000181198],
                     [ 1.024214745,  0.188963503]]], device=device)]
