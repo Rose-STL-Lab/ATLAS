@@ -194,8 +194,8 @@ def discover(config, algebra, cosets):
             lie = torch.tensor([[[-0.050015654,  0.999998927],
                     [-1.015076280,  0.051725421]]], device=device)
         else:
-            lie = torch.tensor([[[-0.152537078, 1.001019597],
-                    [-1.004260302, 0.158555597]]], device=device)
+            lie = torch.tensor([[[-0.252537078, 1.001019597],
+                    [-1.004260302, 0.258555597]]], device=device)
 
         gdn.discover_cosets(lie, 8)
 

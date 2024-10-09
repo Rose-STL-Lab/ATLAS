@@ -57,25 +57,25 @@ Dataset should be downloaded automatically upon first run.
 
 Discover Lie algebra
 ```
-python3 experiment_mnist.py --task discover --epochs 10
+python3 experiment_mnist.py --task discover --epochs 10 --fixed_seed
 ```
 expected results: generator of so(2).
 
 Use LieGAN to attempt to discover global symmetry
 ```
-python3 experiment_mnist.py --task liegan_discover --epochs 10
+python3 experiment_mnist.py --task liegan_discover --epochs 10 --fixed_seed
 ```
 expected results: either trivial group (i.e. low magnitude) or random rotation. Generally, we observe the output is sensitive to the initial condition.
 
 Run baseline CNN with no equivariance
 ```
-python3 experiment_mnist.py --task downstream_baseline --epochs 100 
+python3 experiment_mnist.py --task downstream_baseline --epochs 100  --fixed_seed
 ```
 expected results: test accuracy of around ~70%.
 
 Run downstream CNN that uses the discovered atlas equivariance group
 ```
-python3 experiment_mnist.py --task downstream_discovered --epochs 100 
+python3 experiment_mnist.py --task downstream_discovered --epochs 100  --fixed_seed
 ```
 expected results: test accuracy of around ~94%.
 
@@ -85,20 +85,20 @@ Download dataset from [here](https://portal.nersc.gov/project/ClimateNet/climate
 
 Discover Lie Algebra (optionally use `--standard_basis` flag)
 ```
-python3 experiment_climate.py --task discover --epochs 30
+python3 experiment_climate.py --task discover --epochs 30 --fixed_seed
 ```
 expected results: 4 dimensional Lie algebra with no major bias in any direction.
 
 Run baseline gauge equivariant CNN with SO(2) gauge group:
 ```
-python3 experiment_climate.py --task downstream_baseline --epochs 20 --batch_size 4
+python3 experiment_climate.py --task downstream_baseline --epochs 20 --batch_size 4 --fixed_seed
 ```
 expected results: roughly 0.48 mean iou.
 
 Run downstream gauge equvariant CNN with GL+(2) gauge group (in reality it's not perfectly GL+(2), but instead uses uniform kernels, which is the closest one can get to GL+(2) steerable kernels):
 
 ```
-python3 experiment_climate.py --task downstream_discovered --epochs 20 --batch_size 4
+python3 experiment_climate.py --task downstream_discovered --epochs 20 --batch_size 4 --fixed_seed
 ```
 expected results: roughly 0.48 mean iou (essentialy comparable performance to baseline, with 7x less parameters).
 
