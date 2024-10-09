@@ -103,4 +103,4 @@ python3 experiment_climate.py --task downstream_discovered --epochs 20 --batch_s
 expected results: roughly 0.48 mean iou (essentialy comparable performance to baseline, with 7x less parameters).
 
 ### Custom Identity Component
-When discovering cosets, the model must use an already discovered Lie algebra to determine the identity component. In our work, this is hard coded based on a result the authors ran manually. If you would like to use your own discovered version, replace the appropriate tensors in ```experiment_toptagging.py``` and/or ```experiment_pde.py```
+When discovering cosets, the model must use an already discovered Lie algebra to determine the identity component. In our work, this is hard coded based on a result the authors ran manually. If you would like to use your own discovered version, replace the appropriate tensors (lines 160 and 196/199 respectively) in ```experiment_toptagging.py``` and/or ```experiment_pde.py```
