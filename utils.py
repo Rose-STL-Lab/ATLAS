@@ -12,9 +12,6 @@ def mae(xx, yy):
 
 
 def in_lie_algebra(matrix, basis, absolute=0.1, steps=10000):
-    if torch.det(matrix) < 0:
-        return False
-
     assert steps > 0
 
     matrix = matrix.detach().clone()
