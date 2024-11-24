@@ -35,23 +35,20 @@ ATLAS2 = [
 ]
 
 def heat_pde(x_in, boundary, boundary_val, alpha=1, dx=0.1, dt=0.01, t_steps=50):
-    x_in[boundary] = boundary_val
-
-    for _ in range(t_steps):
-        x = torch.nn.functional.pad(x_in, (2, 2, 2, 2), value=boundary_val)
-
-        ddx = (x[..., 2:, 1:-1] - x[..., :-2, 1:-1]) / (2 * dx)
-        ddy = (x[..., 1:-1, 2:] - x[..., 1:-1, :-2]) / (2 * dx)
-
-        dddx = (ddx[..., 2:, 1:-1] - ddx[..., :-2, 1:-1]) / (2 * dx)
-        dddy = (ddy[..., 1:-1, 2:] - ddy[..., 1:-1, :-2]) / (2 * dx)
-
-        ddt = (dddx + dddy) * alpha
-        
-        x_in = x_in + dt * ddt
+    x_in = x_in.clone()
+    if boundary is not None:
         x_in[boundary] = boundary_val
 
-    return x_in
+    x = torch.nn.functional.pad(x_in, (2, 2, 2, 2), value=boundary_val)
+
+    ddx = (x[..., 2:, 1:-1] - x[..., :-2, 1:-1]) / (2 * dx)
+    ddy = (x[..., 1:-1, 2:] - x[..., 1:-1, :-2]) / (2 * dx)
+
+    dddx = (ddx[..., 2:, 1:-1] - ddx[..., :-2, 1:-1]) / (2 * dx)
+    dddy = (ddy[..., 1:-1, 2:] - ddy[..., 1:-1, :-2]) / (2 * dx)
+
+    ddt = (dddx + dddy) * alpha
+    return ddt
 
 class SinglePredictor(nn.Module):
     def __init__(self):
@@ -125,9 +122,9 @@ class PDEPredictor(nn.Module, Predictor):
     def returns_logits(self):
         return False
 
-
+from perlin_noise import PerlinNoise
 class PDEDataset(torch.utils.data.Dataset):
-    def __init__(self, N, seed=0):
+    def __init__(self, N, seed=0, use_boundary=True):
         super().__init__()
 
         torch.manual_seed(seed)
@@ -136,7 +133,7 @@ class PDEDataset(torch.utils.data.Dataset):
         b = 3 * torch.randn(N, 1, 1, device=device)
         c = (torch.randn(N, 1, 1, device=device).abs() + 1) / 2
 
-        d = 5 * torch.randn(N, 1, 1, device=device) + 12
+        d = 1 * torch.randn(N, 1, 1, device=device) + 12
         e = 3 * torch.randn(N, 1, 1, device=device)
         f = (torch.randn(N, 1, 1, device=device).abs() + 1) / 2
 
@@ -146,10 +143,21 @@ class PDEDataset(torch.utils.data.Dataset):
         u = u.unsqueeze(0).tile(N, 1, 1).float() / rmax
         v = v.unsqueeze(0).tile(N, 1, 1).float() / rmax
 
-        self.X = (c * torch.sin(a * u + b) + f * torch.cos(d * v + e)).unsqueeze(1)
+
+        if N == 10000:
+            self.X = torch.load("predictors/pde_data.pt")
+        else:
+            self.X = torch.empty(N, 1, rmax, rmax).to(device)
+            for i in range(N):
+                noise = PerlinNoise(octaves=3, seed=i)
+                pic = [[noise([i/rmax, j/rmax]) for j in range(rmax)] for i in range(rmax)]
+                self.X[i] = 10 * torch.tensor(pic).to(device)
 
         boundary = (EXCLUSION_X[0] < u) & (u < EXCLUSION_X[1]) & (EXCLUSION_Y[0] < v) & (v < EXCLUSION_Y[1])
+        if not use_boundary:
+            boundary[:] = False
         self.Y = heat_pde(self.X, boundary.unsqueeze(1), math.sqrt(2))
+
 
     def __len__(self):
         return len(self.X)

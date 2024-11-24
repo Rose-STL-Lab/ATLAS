@@ -28,7 +28,7 @@ def in_lie_algebra(matrix, basis, absolute=0.1, steps=10000):
     
     return loss - absolute < 0
 
-def get_device(no_mps=True):
+def get_device(no_mps=False):
     if no_mps:
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
