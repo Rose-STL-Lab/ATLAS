@@ -1,4 +1,4 @@
-# AuTomatic LocAl Symmetry discovery NETwork (AtlasNet)
+# AuTomatic LocAl Symmetry Discovery (AtlasD)
 
 ![heat equation atlas equivariance](figures/heat_equation.png)
 
