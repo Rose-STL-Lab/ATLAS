@@ -340,7 +340,7 @@
 		element: Matrix:
 			mat: matrix
 			tag: {}
-	func CosetRing(at, matrices, label) = identity:
+	func CosetRing(at, matrices, label, scale) = identity:
 		var ret = {}
 		let n = len(matrices)
 		let r = 0.4
@@ -356,11 +356,11 @@
 		ret += Centered:
 			mesh: Text:
 				text: label
-				scale: 0.5
+				scale: 0.5 / scale
 				stroke: BLACK
 				fill: BLACK
 			at: at
-		if coset_use_line		
+		if coset_use_line	
 			ret = {}
 			for i in 0 :< 3
 				ret += Centered:
@@ -381,12 +381,17 @@
 					dir: DOWN
 					align: center
 				at: at
+		ret = Scaled:
+			mesh: ret
+			scale: scale
 		element: ret
 	
 	var mats = {}
 	for i in 0 :< num_mats
 		let a = coset_variation
 		mats += {{random(-a,a), random(-a,a)}, {random(-a,a), random(-a,a)}}
+	
+	let offset = -1.2
 	tree coset_box = Box:
 		text: ""
 		color: rgb(coset_bg)
@@ -394,11 +399,12 @@
 		w: 1.5
 		h: 1.75
 		tag: {}
-		pos: {-2.7, 0.15, 0}
+		pos: {-1.25 + offset, 0.15, 0}
 	coset_box += CosetRing:
 		at: vec_sub(coset_box.pos, {0, 0.15, 0})
 		matrices: mats
 		label: "$C_{1 .. K}$"
+		scale: 1
 	coset_box += Centered:
 		mesh: Text:
 			text: "\textbf{Cosets}"
@@ -447,11 +453,13 @@
 			scale: 0.5
 			stroke: BLACK
 			fill: BLACK
-		at: {-1.25, 0, 0}
+		at: {0.2 + offset, 0, 0}
+	var fake = {}
 	eqn += CosetRing:
 		at: ORIGIN
 		matrices: normed_mats
 		label: "$g_{\ell}$"
+		scale: 0.75
 	eqn += Text:
 		text: "$\to$"
 		scale: 0.5
