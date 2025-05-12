@@ -3,7 +3,7 @@ import torch.nn as nn
 import math
 from utils import get_device, ManifoldPredictor
 from local_symmetry import Predictor, LocalTrainer
-from group_basis import GroupBasis
+from group_basis import LocalGroupBasis
 from ff import R2FeatureField
 from config import Config
 import torchvision
@@ -217,7 +217,7 @@ def discover(config):
     else:
         predictor = MNISTPredictor()
 
-    basis = GroupBasis(
+    basis = LocalGroupBasis(
         1, 2, NUM_CLASS, 1, config.standard_basis,
         lr=5e-4, in_rad=IN_RAD, out_rad=OUT_RAD,
         identity_in_rep=True, identity_out_rep=True

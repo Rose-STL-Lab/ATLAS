@@ -4,7 +4,7 @@
 
 ## Installation
 
-After (optionally) setting up a virtual environment, run:
+After (optionally) setting up a virtual environment, run the following. Note that we ran our experiments using python3.11.
 ```
 pip install -r requirements.txt
 ```

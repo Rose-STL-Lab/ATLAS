@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from utils import get_device
 from local_symmetry import Predictor, LocalTrainer
-from group_basis import GroupBasis
+from group_basis import LocalGroupBasis
 from config import Config
 from climatenet.utils.data import ClimateDatasetLabeled, get_ico_timestamp_dataset
 from climatenet.models import CGNetModule
@@ -365,7 +365,7 @@ def discover(config):
     else:
         predictor = ClimatePredictor(config)
     
-    basis = GroupBasis(
+    basis = LocalGroupBasis(
         config.field_length, 2, config.label_length, 4, config.standard_basis, 
         lr=5e-4, in_rad=IN_RAD, out_rad=OUT_RAD, 
         identity_in_rep=True,

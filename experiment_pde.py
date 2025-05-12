@@ -7,7 +7,7 @@ import tqdm
 import math
 from ff import R2FeatureField
 from utils import get_device, rmse
-from group_basis import GroupBasis
+from group_basis import LocalGroupBasis
 from local_symmetry import Predictor, LocalTrainer
 from config import Config
 
@@ -175,7 +175,7 @@ def discover(config, algebra, cosets):
     in_rad = IN_RAD1 if config.atlas == 1 else IN_RAD2
     out_rad = OUT_RAD1 if config.atlas == 1 else OUT_RAD2
 
-    basis = GroupBasis(
+    basis = LocalGroupBasis(
         1, 2, 1, 1, config.standard_basis, 
         in_rad=in_rad, out_rad=out_rad, 
         num_cosets=16,
