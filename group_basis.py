@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import einops
 
-import abc
+from abc import ABC, abstractmethod
 
 from utils import get_device, transform_atlas
 device = get_device()
@@ -17,7 +17,7 @@ def normalize(x):
 
 
 # shared code between local and global training
-class GroupBasis(nn.Module, abc.ABC):
+class GroupBasis(nn.Module, ABC):
     def __init__(
             self, in_dim, man_dim, out_dim, num_basis, standard_basis, num_cosets=64, 
             lr=5e-4, r1=0.05, r2=1, r3=0.35, dtype=torch.float32, 

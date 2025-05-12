@@ -37,7 +37,7 @@ class Predictor(ABC):
     def needs_training(self):
         return True
 
-class Trainer(abc.ABC):
+class Trainer(ABC):
     def __init__(self, predictor, basis, dataset, config: Config):
         self.predictor = predictor
         self.basis = basis
@@ -71,7 +71,7 @@ class Trainer(abc.ABC):
                 xpp = self.pp_input(xx)
                 ypp = self.pp_input(yy)
 
-                y_pred = self.predictor.run(self.decompse(xpp))
+                y_pred = self.predictor.run(self.decompose(xpp))
                 y_true = self.decompose(ypp)
 
                 p_loss = self.predictor.loss(y_pred, y_true)
