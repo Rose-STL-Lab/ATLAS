@@ -37,10 +37,8 @@ class Predictor(ABC):
     def needs_training(self):
         return True
 
-
-class LocalTrainer:
-    def __init__(self, ff, predictor, basis, dataset, config: Config):
-        self.ff = ff
+class Trainer(abc.ABC):
+    def __init__(self, predictor, basis, dataset, config: Config):
         self.predictor = predictor
         self.basis = basis
         self.dataset = dataset
@@ -49,6 +47,17 @@ class LocalTrainer:
         if config.debug:
             torch.autograd.set_detect_anomaly(True)
         torch.set_printoptions(precision=9, sci_mode=False)
+
+    @abstractmethod
+    def pp_input(self, x):
+        """ preprocess input tensor (namely converting to feature field) """
+        ...
+
+
+    @abstractmethod
+    def decompose (self, y_pp):
+        """ (possibly) split into preprocessed tensor multipls regions """
+        ...
 
     def loader(self):
         collate_fn = self.dataset.collate if hasattr(self.dataset, 'collate') else None
@@ -59,13 +68,11 @@ class LocalTrainer:
         p_losses = []
         if self.predictor.needs_training() and not self.config.reuse_predictor:
             for xx, yy in tqdm.tqdm(loader):
-                xff = self.ff(xx)
-                yff = self.ff(yy)
+                xpp = self.pp_input(xx)
+                ypp = self.pp_input(yy)
 
-                y_pred = self.predictor.run(xff.regions(self.basis.in_rad))
-                # relying on basis for radius is ugly ...
-                # in rad since clipping is only needed for group basis training
-                y_true = yff.regions(self.basis.in_rad)
+                y_pred = self.predictor.run(self.decompse(xpp))
+                y_true = self.decompose(ypp)
 
                 p_loss = self.predictor.loss(y_pred, y_true)
                 p_losses.append(float(p_loss.detach().cpu()))
@@ -74,10 +81,9 @@ class LocalTrainer:
                 p_loss.backward()
                 self.predictor.optimizer.step()
 
-        p_losses = np.mean(p_losses) if len(p_losses) else 0
-
-        if self.predictor.needs_training() and not self.config.reuse_predictor:
             torch.save(self.predictor, "predictors/" + self.predictor.name() + '.pt')
+
+        p_losses = np.mean(p_losses) if len(p_losses) else 0
 
         return p_losses
 
@@ -92,10 +98,10 @@ class LocalTrainer:
             b_losses = []
             b_reg = []
             for xx, yy in tqdm.tqdm(loader):
-                xff = self.ff(xx)
-                yff = self.ff(yy)
+                xpp = self.pp_input(xx)
+                ypp = self.pp_input(yy)
 
-                b_loss = self.basis.step(xff, self.predictor, yff) 
+                b_loss = self.basis.step(xpp, self.predictor, ypp) 
                 b_losses.append(float(b_loss))
 
                 reg = self.basis.regularization(e)
@@ -122,10 +128,10 @@ class LocalTrainer:
             full_losses = []
             b_losses = []
             for xx, yy in tqdm.tqdm(loader):
-                xff = self.ff(xx)
-                yff = self.ff(yy)
+                xpp = self.pp_input(xx)
+                ypp = self.pp_input(yy)
 
-                b_loss_full = self.predictor.batched_loss(*self.basis.coset_step(xff, self.predictor))
+                b_loss_full = self.predictor.batched_loss(*self.basis.coset_step(xpp, self.predictor))
                 full_losses.append(b_loss_full.cpu().detach().numpy())
                 b_loss = b_loss_full.mean()
                 b_losses.append(float(b_loss))
@@ -153,3 +159,16 @@ class LocalTrainer:
                         final.append(coset)
 
         print("Final coset representatives", final)
+
+class LocalTrainer(Trainer):
+    def __init__(self, ff, predictor, basis, dataset, config: Config):
+        super().__init__(predictor, basis, dataset, config)
+        self.ff = ff
+
+    def pp_input(self, x):
+        return self.ff(x)
+
+    def decompose(self, x):
+        # relying on basis for radius is ugly ...
+        return x.regions(self.basis.in_rad)
+

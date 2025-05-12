@@ -2,6 +2,8 @@ import torch
 import torch.nn as nn
 import einops
 
+import abc
+
 from utils import get_device, transform_atlas
 device = get_device()
 
@@ -14,23 +16,18 @@ def normalize(x):
     return x
 
 
-class GroupBasis(nn.Module):
+# shared code between local and global training
+class GroupBasis(nn.Module, abc.ABC):
     def __init__(
             self, in_dim, man_dim, out_dim, num_basis, standard_basis, num_cosets=64, 
-            in_rad=10, out_rad=5, lr=5e-4, r1=0.05, r2=1, r3=0.35,
-            identity_in_rep=False, identity_out_rep=False, in_interpolation='bilinear', out_interpolation='bilinear', dtype=torch.float32,
+            lr=5e-4, r1=0.05, r2=1, r3=0.35, dtype=torch.float32, 
+            identity_in_rep=True, identity_out_rep=True,
     ):
         super().__init__()
     
         self.in_dim = in_dim
         self.man_dim = man_dim
         self.out_dim = out_dim
-
-        self.in_rad = in_rad
-        self.out_rad = out_rad
-
-        self.in_interpolation = in_interpolation
-        self.out_interpolation = out_interpolation
 
         self.identity_in_rep = identity_in_rep
         self.identity_out_rep = identity_out_rep
@@ -55,7 +52,7 @@ class GroupBasis(nn.Module):
         self.cosets = nn.Parameter(cosets)
 
         self.optimizer = torch.optim.Adam(self.parameters(), lr=lr)
-    
+
     def summary(self):
         ret = []
         if not self.identity_in_rep:
@@ -84,11 +81,51 @@ class GroupBasis(nn.Module):
         """
         return torch.normal(0, 1, (*bs, self.num_basis)).to(device) 
 
+    def norm_cosets(self):
+        det = torch.abs(torch.det(self.cosets).unsqueeze(-1).unsqueeze(-1))
+        return self.cosets / (det ** (1 / self.man_dim))
+
+    # called by Trainer 
+    def regularization(self, _epoch_num):
+        # aim for as 'orthogonal' as possible basis matrices
+        sim = self.similarity_loss(self.lie_basis)
+
+        # past a certain point, increasing the basis means nothing
+        # we only want to increase to a certain extent
+        clipped = self.lie_basis.clamp(-self.r2, self.r2)
+        trace = torch.sqrt(torch.einsum('kdf,kdf->k', clipped, clipped))
+        lie_mag = -torch.mean(trace)
+
+        return self.r1 * sim + self.r3 * lie_mag
+
+    @abstractmethod
     def step(self, x, pred, _y):
         """
             y is only used for debug
         """
 
+        ...
+
+    @abstractmethod
+    def coset_step(self, x, pred):
+        ...
+
+
+class LocalGroupBasis(GroupBasis):
+    def __init__(
+            self, in_dim, man_dim, out_dim, num_basis, standard_basis, 
+            in_rad=10, out_rad=5, in_interpolation='bilinear', out_interpolation='bilinear',
+        **kwargs
+    ):
+        super().__init__(in_dim, man_dim, out_dim, num_basis, standard_basis, **kwargs)
+    
+        self.in_rad = in_rad
+        self.out_rad = out_rad
+
+        self.in_interpolation = in_interpolation
+        self.out_interpolation = out_interpolation
+
+    def step(self, x, pred, _y):
         bs = x.batch_size()
 
         coeffs = self.sample_coefficients((bs, x.num_charts())) 
@@ -124,10 +161,6 @@ class GroupBasis(nn.Module):
 
         return pred.loss(y_atlas_true, g_y_atlas)
 
-    def norm_cosets(self):
-        det = torch.abs(torch.det(self.cosets).unsqueeze(-1).unsqueeze(-1))
-        return self.cosets / (det ** (1 / self.man_dim))
-
     def coset_step(self, x, pred):
         # for now, can only handle identity in and out rep
         assert self.identity_in_rep and self.identity_out_rep
@@ -157,16 +190,3 @@ class GroupBasis(nn.Module):
         g_y_atlas = g_y_atlas[..., r - self.out_rad: r + self.out_rad + 1, c - self.out_rad: c + self.out_rad + 1]
 
         return y_atlas_true.unflatten(0, (-1, bs)), g_y_atlas.unflatten(0, (-1, bs))
-
-    # called by LocalTrainer during training
-    def regularization(self, _epoch_num):
-        # aim for as 'orthogonal' as possible basis matrices
-        sim = self.similarity_loss(self.lie_basis)
-
-        # past a certain point, increasing the basis means nothing
-        # we only want to increase to a certain extent
-        clipped = self.lie_basis.clamp(-self.r2, self.r2)
-        trace = torch.sqrt(torch.einsum('kdf,kdf->k', clipped, clipped))
-        lie_mag = -torch.mean(trace)
-
-        return self.r1 * sim + self.r3 * lie_mag
