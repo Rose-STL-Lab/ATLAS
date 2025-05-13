@@ -133,6 +133,8 @@ def cosets(config, predictor, loader):
             y_pred = torch.permute(y_pred, (1, 2, 0))
             y_tind = torch.permute(y_tind, (1, 2, 0))
 
+            print(y_pred.shape)
+
             losses = torch.mean(torch.nn.functional.cross_entropy(y_pred, y_tind, reduction='none'), dim=0)
             loss = torch.mean(losses)
             average_losses.append(losses.detach().cpu().numpy())

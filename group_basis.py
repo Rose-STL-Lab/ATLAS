@@ -217,7 +217,7 @@ class GlobalGroupBasis(GroupBasis):
     def coset_step(self, x, pred, _y):
         assert self.identity_in_rep and self.identity_out_rep
 
-        bs = x.batch_size()
+        bs = x.shape[0]
 
         normalized = self.norm_cosets()
         g_x = torch.einsum('pij, bcj -> pbci', normalized, x)

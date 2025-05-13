@@ -11,7 +11,7 @@ device=get_device()
 def fn(u):
     x = u[..., 0, 0]
     y = u[..., 0, 1]
-    return torch.abs(x) + torch.abs(y)
+    return (torch.abs(x) + torch.abs(y)).unsqueeze(-1)
 
 
 class D4Predictor(Predictor):
@@ -35,7 +35,7 @@ class D4(torch.utils.data.Dataset):
     def __init__(self, N=10000):
         super().__init__()
         self.len = N
-        self.X = torch.empty((N, 1, 2))
+        self.X = torch.empty((N, 1, 2), device=device)
         torch.nn.init.normal_(self.X)
         self.Y = fn(self.X)
 
