@@ -150,6 +150,7 @@ class Trainer(ABC):
                 print("Filtering duplicate cosets...")
                 inds = np.argsort(full_losses_avg)
 
+
                 final = []
                 for coset in self.basis.norm_cosets()[inds][:q]:
                     for curr in final:

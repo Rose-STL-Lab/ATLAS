@@ -25,11 +25,10 @@ class D4Predictor(Predictor):
         return torch.abs(y_pred, y_true).mean()
 
     def batched_loss(self, y_pred, y_true):
-        return torch.mean(torch.abs(y_pred - y_true), dim=-1)
+        return torch.mean(torch.abs(y_pred - y_true), dim=[-1, -2])
 
     def needs_training(self):
         return False
-
 
 class D4(torch.utils.data.Dataset):
     def __init__(self, N=10000):
@@ -49,7 +48,6 @@ class D4(torch.utils.data.Dataset):
 if __name__ == '__main__':
     c = Config()
     dataset = D4(N=c.N)
-    loader = torch.utils.data.DataLoader(dataset, batch_size=16, shuffle=True)
 
     pred = D4Predictor()
     basis = GlobalGroupBasis(2, 1, False, num_cosets=256)

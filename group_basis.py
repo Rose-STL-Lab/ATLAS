@@ -202,7 +202,7 @@ class GlobalGroupBasis(GroupBasis):
         bs = x.shape[0]
 
         coeffs = self.sample_coefficients((bs,)) 
-        sampled_lie = torch.sum(lie * coeffs.unsqueeze(-1).unsqueeze(-1), dim=-3)
+        sampled_lie = torch.sum(self.lie_basis * coeffs.unsqueeze(-1).unsqueeze(-1), dim=-3)
 
         g = torch.matrix_exp(sampled_lie)
         g_x = torch.einsum('bij, bcj -> bci', g, x)
@@ -229,8 +229,5 @@ class GlobalGroupBasis(GroupBasis):
         y_tind = pred.run(x)
         if pred.returns_logits():
             y_tind = torch.nn.functional.softmax(y_tind, dim=-1)
-
-        y_pred = torch.permute(y_pred, (1, 2, 0))
-        y_tind = torch.permute(y_tind, (1, 2, 0))
 
         return y_pred, y_tind
