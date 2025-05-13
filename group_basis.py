@@ -99,15 +99,11 @@ class GroupBasis(nn.Module, abc.ABC):
         return self.r1 * sim + self.r3 * lie_mag
 
     @abstractmethod
-    def step(self, x, pred, _y):
-        """
-            y is only used for debug
-        """
-
+    def step(self, x, pred, y):
         ...
 
     @abstractmethod
-    def coset_step(self, x, pred):
+    def coset_step(self, x, pred, y):
         ...
 
 
@@ -161,7 +157,7 @@ class LocalGroupBasis(GroupBasis):
 
         return pred.loss(y_atlas_true, g_y_atlas)
 
-    def coset_step(self, x, pred):
+    def coset_step(self, x, pred, _y):
         # for now, can only handle identity in and out rep
         assert self.identity_in_rep and self.identity_out_rep
 
@@ -190,3 +186,51 @@ class LocalGroupBasis(GroupBasis):
         g_y_atlas = g_y_atlas[..., r - self.out_rad: r + self.out_rad + 1, c - self.out_rad: c + self.out_rad + 1]
 
         return y_atlas_true.unflatten(0, (-1, bs)), g_y_atlas.unflatten(0, (-1, bs))
+
+class GlobalGroupBasis(GroupBasis):
+
+    def __init__(
+            self, in_dim, num_basis, standard_basis, 
+        **kwargs
+    ):
+        super().__init__(1, in_dim, 1, num_basis, standard_basis, **kwargs)
+    
+
+    def step(self, x, pred, _y):
+        assert self.identity_in_rep and self.identity_out_rep
+
+        bs = x.shape[0]
+
+        coeffs = self.sample_coefficients((bs,)) 
+        sampled_lie = torch.sum(lie * coeffs.unsqueeze(-1).unsqueeze(-1), dim=-3)
+
+        g = torch.matrix_exp(sampled_lie)
+        g_x = torch.einsum('bij, bcj -> bci', g, x)
+
+        y_pred = pred.run(g_x)
+        y_tind = pred.run(x)
+        if pred.returns_logits():
+            y_tind = torch.nn.functional.softmax(y_tind, dim=-1)
+
+        return pred.loss(y_pred, y_tind)
+
+    def coset_step(self, x, pred, _y):
+        assert self.identity_in_rep and self.identity_out_rep
+
+        bs = x.batch_size()
+
+        normalized = self.norm_cosets()
+        g_x = torch.einsum('pij, bcj -> pbci', normalized, x)
+        x = x.unsqueeze(0).expand(g_x.shape)
+
+        # p b 2
+        y_pred = pred.run(g_x)
+        # p b
+        y_tind = pred.run(x)
+        if pred.returns_logits():
+            y_tind = torch.nn.functional.softmax(y_tind, dim=-1)
+
+        y_pred = torch.permute(y_pred, (1, 2, 0))
+        y_tind = torch.permute(y_tind, (1, 2, 0))
+
+        return y_pred, y_tind
