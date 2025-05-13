@@ -131,7 +131,7 @@ class Trainer(ABC):
                 xpp = self.pp_input(xx)
                 ypp = self.pp_input(yy)
 
-                b_loss_full = self.predictor.batched_loss(*self.basis.coset_step(xpp, self.predictor))
+                b_loss_full = self.predictor.batched_loss(*self.basis.coset_step(xpp, self.predictor, ypp))
                 full_losses.append(b_loss_full.cpu().detach().numpy())
                 b_loss = b_loss_full.mean()
                 b_losses.append(float(b_loss))
@@ -171,4 +171,14 @@ class LocalTrainer(Trainer):
     def decompose(self, x):
         # relying on basis for radius is ugly ...
         return x.regions(self.basis.in_rad)
+
+class GlobalTrainer(Trainer):
+    def __init__(self, predictor, basis, dataset, config: Config):
+        super().__init__(predictor, basis, dataset, config)
+
+    def pp_input(self, x):
+        return x
+
+    def decompose(self, x):
+        return x
 
