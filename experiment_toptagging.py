@@ -25,7 +25,6 @@ class ClassPredictor(nn.Module, Predictor):
             nn.ReLU(),
             nn.Linear(512, n_classes),
         ).to(device)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
 
     def name(self):
         return "toptag"
@@ -73,8 +72,6 @@ class TopTagging(torch.utils.data.Dataset):
         return self.X[idx], self.y[idx]
 
 def discover(config, continuous, discrete):
-    torch.set_printoptions(precision=9, sci_mode=False)
-
     targets = []
     if continuous:
         targets.append("algebra")
@@ -98,7 +95,7 @@ def discover(config, continuous, discrete):
 
     basis = GlobalGroupBasis(
         4, 7, c.standard_basis, num_cosets=256,
-        r1=1, r3=0.1
+        r1=0.1, r3=1
     )
     trainer = GlobalTrainer(predictor, basis, dataset, c)
 
