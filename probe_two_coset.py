@@ -2,7 +2,7 @@ import torch
 import tqdm
 import numpy as np
 from utils import get_device, in_lie_algebra, rmse
-from local_symmetry import Predictor, GlobalTrainer
+from atlasd import Predictor, GlobalTrainer
 from group_basis import GlobalGroupBasis
 from config import Config
 

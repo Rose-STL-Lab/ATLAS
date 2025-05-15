@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 import tqdm
 from utils import get_device, in_lie_algebra
-from local_symmetry import Predictor, GlobalTrainer
+from atlasd import Predictor, GlobalTrainer
 from group_basis import GlobalGroupBasis
 from config import Config
 
@@ -88,7 +88,7 @@ def discover(config, continuous, discrete):
 
     if config.reuse_predictor:
         print("* Reusing Predictor")
-        predictor = torch.load('predictors/toptag.pt').to(device)
+        predictor = torch.load('predictors/toptag.pt', weights_only=True).to(device)
     else:
         print("* Training Predictor")
         predictor = ClassPredictor(n_dim, n_component, n_class).to(device)

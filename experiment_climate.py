@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from utils import get_device
-from local_symmetry import Predictor, LocalTrainer
+from atlasd import Predictor, LocalTrainer
 from group_basis import LocalGroupBasis
 from config import Config
 from climatenet.utils.data import ClimateDatasetLabeled, get_ico_timestamp_dataset

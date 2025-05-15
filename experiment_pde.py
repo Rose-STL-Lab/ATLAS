@@ -8,7 +8,7 @@ import math
 from ff import R2FeatureField
 from utils import get_device, rmse
 from group_basis import LocalGroupBasis
-from local_symmetry import Predictor, LocalTrainer
+from atlasd import Predictor, LocalTrainer
 from config import Config
 
 
