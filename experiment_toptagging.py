@@ -94,7 +94,7 @@ def discover(config, continuous, discrete):
         predictor = ClassPredictor(n_dim, n_component, n_class).to(device)
 
     basis = GlobalGroupBasis(
-        4, 7, c.standard_basis, num_cosets=256,
+        4, 7, c.standard_basis, num_cosets=64,
         r1=0.1, r3=1
     )
     trainer = GlobalTrainer(predictor, basis, dataset, c)
