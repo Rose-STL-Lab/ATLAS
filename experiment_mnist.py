@@ -212,10 +212,9 @@ class MNISTDataset(torch.utils.data.Dataset):
 def discover(config):
     print("Task: discovery")
 
+    predictor = MNISTPredictor()
     if config.reuse_predictor:
-        predictor = torch.load('predictors/mnist.pt')
-    else:
-        predictor = MNISTPredictor()
+        predictor.load_state_dict(torch.load('predictors/mnist.pt', weights_only=True).to(device))
 
     basis = LocalGroupBasis(
         1, 2, NUM_CLASS, 1, config.standard_basis,

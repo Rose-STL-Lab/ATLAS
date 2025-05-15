@@ -86,12 +86,12 @@ def discover(config, continuous, discrete):
 
     dataset = TopTagging(n_component=n_component)
 
+    predictor = ClassPredictor(n_dim, n_component, n_class).to(device)
     if config.reuse_predictor:
         print("* Reusing Predictor")
-        predictor = torch.load('predictors/toptag.pt', weights_only=True).to(device)
+        predictor.load_state_dict(torch.load('predictors/toptag.pt', weights_only=True).to(device))
     else:
         print("* Training Predictor")
-        predictor = ClassPredictor(n_dim, n_component, n_class).to(device)
 
     basis = GlobalGroupBasis(
         4, 7, c.standard_basis, num_cosets=64,

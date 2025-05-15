@@ -360,10 +360,9 @@ def discover(config):
     config.label_length = 3  # nothing, AR, TC
     config.field_length = len(config.fields)
 
+    predictor = ClimatePredictor(config)
     if config.reuse_predictor:
-        predictor = torch.load('predictors/climate.pt')
-    else:
-        predictor = ClimatePredictor(config)
+        predictor.load_state_dict(torch.load('predictors/climate.pt', weights_only=True).to(device))
     
     basis = LocalGroupBasis(
         config.field_length, 2, config.label_length, 4, config.standard_basis, 

@@ -81,7 +81,7 @@ class Trainer(ABC):
                 p_loss.backward()
                 self.predictor.optimizer.step()
 
-            torch.save(self.predictor, "predictors/" + self.predictor.name() + '.pt')
+            torch.save(self.predictor.state_dict(), "predictors/" + self.predictor.name() + '.pt')
 
         p_losses = np.mean(p_losses) if len(p_losses) else 0
 

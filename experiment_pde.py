@@ -167,10 +167,9 @@ def discover(config, algebra, cosets):
 
     print("Task: discovering", targets)
 
+    predictor = PDEPredictor()
     if config.reuse_predictor:
-        predictor = torch.load("predictors/pde.pt").to(device)
-    else:
-        predictor = PDEPredictor()
+        predictor.load_state_dict(torch.load("predictors/pde.pt", weights_only=True).to(device))
 
     in_rad = IN_RAD1 if config.atlas == 1 else IN_RAD2
     out_rad = OUT_RAD1 if config.atlas == 1 else OUT_RAD2
