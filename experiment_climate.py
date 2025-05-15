@@ -362,7 +362,7 @@ def discover(config):
 
     predictor = ClimatePredictor(config)
     if config.reuse_predictor:
-        predictor.load_state_dict(torch.load('predictors/climate.pt', weights_only=True).to(device))
+        predictor.load_state_dict(torch.load('predictors/climate.pt', weights_only=True, map_location=device))
     
     basis = LocalGroupBasis(
         config.field_length, 2, config.label_length, 4, config.standard_basis, 

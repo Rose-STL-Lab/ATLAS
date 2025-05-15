@@ -214,7 +214,7 @@ def discover(config):
 
     predictor = MNISTPredictor()
     if config.reuse_predictor:
-        predictor.load_state_dict(torch.load('predictors/mnist.pt', weights_only=True).to(device))
+        predictor.load_state_dict(torch.load('predictors/mnist.pt', weights_only=True, map_location=device))
 
     basis = LocalGroupBasis(
         1, 2, NUM_CLASS, 1, config.standard_basis,

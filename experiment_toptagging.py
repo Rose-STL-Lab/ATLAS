@@ -26,6 +26,8 @@ class ClassPredictor(nn.Module, Predictor):
             nn.Linear(512, n_classes),
         ).to(device)
 
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=1e-3)
+
     def name(self):
         return "toptag"
 
@@ -84,14 +86,14 @@ def discover(config, continuous, discrete):
     n_component = 30
     n_class = 2
 
-    dataset = TopTagging(n_component=n_component)
-
     predictor = ClassPredictor(n_dim, n_component, n_class).to(device)
     if config.reuse_predictor:
         print("* Reusing Predictor")
-        predictor.load_state_dict(torch.load('predictors/toptag.pt', weights_only=True).to(device))
+        predictor.load_state_dict(torch.load('predictors/toptag.pt', weights_only=True, map_location=device))
     else:
         print("* Training Predictor")
+
+    dataset = TopTagging(n_component=n_component)
 
     basis = GlobalGroupBasis(
         4, 7, c.standard_basis, num_cosets=64,
