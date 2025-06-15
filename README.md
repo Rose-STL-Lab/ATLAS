@@ -2,6 +2,8 @@
 
 ![heat equation atlas equivariance](figures/heat_equation.png)
 
+Official code repository for the paper "AtlasD: Automatic Local Symmetry Discovery" (ICML 2025 poster).
+
 ## Installation
 
 After (optionally) setting up a virtual environment, run the following. Note that we ran our experiments using python3.11.
@@ -104,3 +106,14 @@ expected results: roughly 0.48 mean iou (essentialy comparable performance to ba
 
 ### Custom Identity Component
 When discovering cosets, the model must use an already discovered Lie algebra to determine the identity component. In our work, this is hard coded based on a result the authors ran manually. If you would like to use your own discovered version, replace the appropriate tensors (lines 160 and 196/199 respectively) in ```experiment_toptagging.py``` and/or ```experiment_pde.py```
+
+## Cite
+```
+@article{bhat2025local,
+  title={AtlasD: Automatic Local Symmetry Discovery},
+  author={Bhat, Manu and Park, Jonghyun and Yang, Jianke and Dehmamy, Nima and Walters, Robin and Yu, Rose},
+  journal={International Conference on Machine Learning},
+  organization={PMLR},
+  year={2025}
+}
+```
